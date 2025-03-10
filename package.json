@@ -23,7 +23,7 @@
     "format": "prettier --write \"{src,__tests__}/**/*.{js,ts,tsx}\""
   },
   "dependencies": {
-    "@workos-inc/node": "^7.31.0",
+    "@workos-inc/node": "^7.41.0",
     "iron-session": "^8.0.1",
     "jose": "^5.2.3"
   },
