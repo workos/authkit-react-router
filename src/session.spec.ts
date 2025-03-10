@@ -207,7 +207,7 @@ describe('session', () => {
       // Execute
       const response = await terminateSession(createMockRequest());
 
-      // Assert response is instance of Remix Response
+      // Assert response is instance of Response
       expect(response instanceof Response).toBe(true);
       expect(response.status).toBe(302);
       expect(response.headers.get('Location')).toBe('https://auth.workos.com/logout/test-session-id');

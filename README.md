@@ -1,24 +1,24 @@
-# AuthKit Remix Library
+# AuthKit React Router Library
 
-The AuthKit library for Remix provides convenient helpers for authentication and session management using WorkOS & AuthKit with Remix. You can find this library in action in the [remix-authkit-example](https://github.com/workos/remix-authkit-example) repo.
+The AuthKit library for React Router 7+ provides convenient helpers for authentication and session management using WorkOS & AuthKit with React Router. You can find this library in action in the [react-rotuer-authkit-example](https://github.com/workos/react-rotuer-authkit-example) repo.
 
 ## Installation
 
 Install the package with:
 
 ```
-npm i @workos-inc/authkit-remix
+npm i @workos-inc/authkit-react-router
 ```
 
 or
 
 ```
-yarn add @workos-inc/authkit-remix
+yarn add @workos-inc/authkit-react-router
 ```
 
 ## Configuration
 
-AuthKit for Remix offers a flexible configuration system that allows you to customize various settings. You can configure the library in three ways:
+AuthKit for React Router offers a flexible configuration system that allows you to customize various settings. You can configure the library in three ways:
 
 ### 1. Environment Variables
 
@@ -36,7 +36,7 @@ AuthKit for Remix offers a flexible configuration system that allows you to cust
 You can also configure AuthKit programmatically by importing the `configure` function:
 
 ```typescript
-import { configure } from '@workos-inc/authkit-remix';
+import { configure } from '@workos-inc/authkit-react-router';
 // In your root or entry file
 configure({
   clientId: 'client_1234567890',
@@ -59,7 +59,7 @@ For non-standard environments (like Deno or Edge functions), you can provide a c
 >While this library includes support for custom environment sources that could theoretically work in non-Node.js runtimes like Deno or Edge functions, this functionality has not been extensively tested (yet). If you're planning to use AuthKit in these environments, you may encounter unexpected issues. We welcome feedback and contributions from users who test in these environments.
 
 ```typescript
-import { configure } from '@workos-inc/authkit-remix';
+import { configure } from '@workos-inc/authkit-react-router';
 
 configure(key => Deno.env.get(key));
 // Or combine with explicit values
@@ -103,10 +103,10 @@ When retrieving configuration values, AuthKit follows this priority order:
 
 ### Callback route
 
-AuthKit requires that you have a callback URL to redirect users back to after they've authenticated. In your Remix app, [create a new route](https://remix.run/docs/en/main/discussion/routes) and add the following:
+AuthKit requires that you have a callback URL to redirect users back to after they've authenticated. In your React Router app, [create a new route](https://reactrouter.com/start/framework/routing) and add the following:
 
 ```ts
-import { authLoader } from '@workos-inc/authkit-remix';
+import { authLoader } from '@workos-inc/authkit-react-router';
 
 export const loader = authLoader();
 ```
@@ -131,14 +131,13 @@ export const loader = authLoader({
 
 ## Usage
 
-### Access authentication data in your Remix application
+### Access authentication data in your React Router application
 
-Use `authkitLoader` to configure AuthKit for your Remix application routes.
+Use `authkitLoader` to configure AuthKit for your React Router application routes.
 
 ```tsx
-import type { LoaderFunctionArgs } from '@remix-run/node';
-import { useLoaderData } from '@remix-run/react';
-import { authkitLoader } from '@workos-inc/authkit-remix';
+import { type LoaderFunctionArgs, useLoaderData } from 'react-router';
+import { authkitLoader } from '@workos-inc/authkit-react-router';
 
 export const loader = (args: LoaderFunctionArgs) => authkitLoader(args);
 
@@ -159,14 +158,19 @@ export function App() {
 For pages where you want to display a signed-in and signed-out view, use `authkitLoader` to retrieve the user profile from WorkOS. You can pass in additional data by providing a loader function directly to `authkitLoader`.
 
 ```tsx
-import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
-import { json } from '@remix-run/node';
-import { Form, Link, useLoaderData } from '@remix-run/react';
-import { getSignInUrl, getSignUpUrl, signOut, authkitLoader } from '@workos-inc/authkit-remix';
+import type {
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+  data,
+  Form,
+  Link,
+  useLoaderData
+} from 'react-router';
+import { getSignInUrl, getSignUpUrl, signOut, authkitLoader } from '@workos-inc/authkit-react-router';
 
 export const loader = (args: LoaderFunctionArgs) =>
   authkitLoader(args, async ({ request, auth }) => {
-    return json({
+    return data({
       signInUrl: await getSignInUrl(),
       signUpUrl: await getSignUpUrl(),
     });
@@ -217,9 +221,8 @@ Use the `signOut` method to sign out the current logged in user, end the session
 Sometimes it is useful to obtain the access token directly, for instance to make API requests to another service.
 
 ```tsx
-import type { LoaderFunctionArgs } from '@remix-run/node';
-import { json } from '@remix-run/node';
-import { authkitLoader } from '@workos-inc/authkit-remix';
+import { data, type LoaderFunctionArgs } from 'react-router';
+import { authkitLoader } from '@workos-inc/authkit-react-router';
 
 export const loader = (args: LoaderFunctionArgs) =>
   authkitLoader(args, async ({ auth }) => {
@@ -235,7 +238,7 @@ export const loader = (args: LoaderFunctionArgs) =>
       },
     });
 
-    return json({
+    return data({
       data: serviceData,
     });
   });
@@ -246,7 +249,7 @@ export const loader = (args: LoaderFunctionArgs) =>
 To enable debug logs, pass in the debug flag when using `authkitLoader`.
 
 ```ts
-import { authkitLoader } from '@workos-inc/authkit-remix';
+import { authkitLoader } from '@workos-inc/authkit-react-router';
 
 export const loader = (args: LoaderFunctionArgs) => authkitLoader(args, { debug: true });
 ```
@@ -254,7 +257,7 @@ export const loader = (args: LoaderFunctionArgs) => authkitLoader(args, { debug:
 If providing a loader function, you can pass the options object as the third parameter
 
 ```ts
-import { authkitLoader } from '@workos-inc/authkit-remix';
+import { authkitLoader } from '@workos-inc/authkit-react-router';
 
 export const loader = (args: LoaderFunctionArgs) =>
   authkitLoader(

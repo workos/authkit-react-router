@@ -21,7 +21,7 @@ export function createWorkOSInstance() {
     https: apiHttps,
     port: apiPort,
     appInfo: {
-      name: 'authkit-remix',
+      name: 'authkit-react-router',
       version: VERSION,
     },
   };

@@ -16,7 +16,7 @@ describe('workos', () => {
     https: true,
     port: undefined,
     appInfo: {
-      name: 'authkit-remix',
+      name: 'authkit-react-router',
       version: expect.any(String),
     },
   } as const;
