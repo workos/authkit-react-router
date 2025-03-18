@@ -2,7 +2,12 @@ name: Release
 
 on:
   # Support manually pushing a new release
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Test workflow without publishing (dry run)'
+        type: 'boolean'
+        default: false
   # Trigger when a release is published
   release:
     types: [published]
@@ -30,16 +35,71 @@ jobs:
         run: |
           npm run build
 
-      - name: Push Release
+      - name: Backup package.json
+        run: |
+          cp package.json package.json.original
+
+      # Publish to @workos-inc org (original package)
+      - name: Push Release to @workos-inc
         if: ${{ !github.event.release.prerelease }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm publish --tag latest --access=public
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "DRY RUN: Would publish to @workos-inc org with tag latest"
+            npm publish --dry-run --tag latest --access=public
+          else
+            npm publish --tag latest --access=public
+          fi
 
-      - name: Push Pre-Release
+      - name: Push Pre-Release to @workos-inc
         if: ${{ github.event.release.prerelease }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm publish --tag next --access=public
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "DRY RUN: Would publish to @workos-inc org with tag next"
+            npm publish --dry-run --tag next --access=public
+          else
+            npm publish --tag next --access=public
+          fi
+
+      # Publish to @workos org with modified package name
+      - name: Update package.json for @workos org
+        run: |
+          # Extract the package name without scope
+          PACKAGE_NAME=$(jq -r '.name | split("/")[1]' package.json)
+          # Update to @workos org
+          jq --arg name "@workos/$PACKAGE_NAME" '.name = $name' package.json > temp.json && mv temp.json package.json
+
+          # Show the transformation for verification
+          echo "Original package name: $(jq -r '.name' package.json.original)"
+          echo "Updated package name: $(jq -r '.name' package.json)"
+
+      - name: Push Release to @workos
+        if: ${{ !github.event.release.prerelease }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "DRY RUN: Would publish to @workos org with tag latest"
+            npm publish --dry-run --tag latest --access=public
+          else
+            npm publish --tag latest --access=public
+          fi
+
+      - name: Push Pre-Release to @workos
+        if: ${{ github.event.release.prerelease }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "DRY RUN: Would publish to @workos org with tag next"
+            npm publish --dry-run --tag next --access=public
+          else
+            npm publish --tag next --access=public
+          fi
+
+      - name: Restore original package.json
+        run: |
+          mv package.json.original package.json
