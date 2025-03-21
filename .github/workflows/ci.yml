@@ -11,6 +11,45 @@ defaults:
     shell: bash
 
 jobs:
+  prettier:
+    name: Prettier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install Dependencies
+        run: npm install
+      - name: Prettier
+        run: npm run prettier
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install Dependencies
+        run: npm install
+      - name: Lint
+        run: npm run lint
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install Dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
+
   test:
     name: Test Node ${{ matrix.node }}
     runs-on: ubuntu-latest
@@ -22,23 +61,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-
       - name: Install Dependencies
-        run: |
-          npm install
-
-      - name: Prettier
-        run: |
-          npm run prettier
-
-      - name: Lint
-        run: |
-          npm run lint
-
-      - name: Build
-        run: |
-          npm run build
-
+        run: npm install
       - name: Test
-        run: |
-          npm run test -- --coverage
+        run: npm run test -- --coverage
