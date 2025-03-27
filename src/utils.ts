@@ -38,6 +38,17 @@ export function isResponse(response: unknown): response is Response {
 }
 
 /**
+ * Returns true if the response is a JSON response.
+ * This is determined by checking if the Content-Type header includes 'application/json'.
+ * @param res - The response to check.
+ * @returns True if the response is a JSON response.
+ */
+export function isJsonResponse(res: Response): boolean {
+  const contentType = res.headers.get('Content-Type')?.toLowerCase();
+  return !!contentType?.includes('application/json');
+}
+
+/**
  * Checks if the data is a DataWithResponseInit object.
  * @param data - The data to check.
  * @returns True if the data is a DataWithResponseInit object.
