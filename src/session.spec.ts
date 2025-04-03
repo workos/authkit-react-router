@@ -566,7 +566,7 @@ describe('session', () => {
       const validSessionData = {
         accessToken: 'valid.token',
         refreshToken: 'refresh.token',
-        user: { 
+        user: {
           id: 'user-1',
           email: 'test@example.com',
           firstName: 'Test',
@@ -651,7 +651,7 @@ describe('session', () => {
       authenticateWithRefreshToken.mockRejectedValue(new Error('Invalid refresh token'));
 
       await expect(refreshSession(createMockRequest())).rejects.toThrow(
-        'Failed to refresh session: Invalid refresh token'
+        'Failed to refresh session: Invalid refresh token',
       );
     });
   });
