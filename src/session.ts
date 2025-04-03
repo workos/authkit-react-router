@@ -14,13 +14,71 @@ import { sealData, unsealData } from 'iron-session';
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { getConfig } from './config.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
-import { isResponse, isRedirect, isJsonResponse } from './utils.js';
+import { isJsonResponse, isRedirect, isResponse } from './utils.js';
 
 // must be a type since this is a subtype of response
 // interfaces must conform to the types they extend
 export type TypedResponse<T> = Response & {
   json(): Promise<T>;
 };
+
+export async function refreshSession(request: Request, { organizationId }: { organizationId?: string } = {}) {
+  const { getSession, commitSession } = await getSessionStorage();
+  const session = await getSessionFromCookie(request.headers.get('Cookie') as string);
+
+  if (!session) {
+    throw redirect(await getAuthorizationUrl());
+  }
+
+  try {
+    const { accessToken, refreshToken } = await getWorkOS().userManagement.authenticateWithRefreshToken({
+      clientId: getConfig('clientId'),
+      refreshToken: session.refreshToken,
+      organizationId,
+    });
+
+    const newSession = {
+      accessToken,
+      refreshToken,
+      user: session.user,
+      impersonator: session.impersonator,
+      headers: {} as Record<string, string>,
+    };
+
+    const cookieSession = await getSession(request.headers.get('Cookie'));
+    cookieSession.set('jwt', await encryptSession(newSession));
+    const cookie = await commitSession(cookieSession);
+
+    newSession.headers = {
+      'Set-Cookie': cookie,
+    };
+
+    const {
+      sessionId,
+      organizationId: newOrgId,
+      role,
+      permissions,
+      entitlements,
+    } = getClaimsFromAccessToken(accessToken);
+
+    return {
+      user: session.user,
+      sessionId,
+      accessToken,
+      organizationId: newOrgId,
+      role,
+      permissions,
+      entitlements,
+      impersonator: session.impersonator || null,
+      sealedSession: cookieSession.get('jwt'),
+      headers: newSession.headers,
+    };
+  } catch (error) {
+    throw new Error(`Failed to refresh session: ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
+    });
+  }
+}
 
 async function updateSession(request: Request, debug: boolean) {
   const session = await getSessionFromCookie(request.headers.get('Cookie') as string);
