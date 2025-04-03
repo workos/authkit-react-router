@@ -22,6 +22,13 @@ export type TypedResponse<T> = Response & {
   json(): Promise<T>;
 };
 
+/**
+ * This function is used to refresh the session by using the refresh token.
+ * It will authenticate the user with the refresh token and return a new session object.
+ * @param request - The request object
+ * @param options - Optional configuration options
+ * @returns A promise that resolves to the new session object
+ */
 export async function refreshSession(request: Request, { organizationId }: { organizationId?: string } = {}) {
   const { getSession, commitSession } = await getSessionStorage();
   const session = await getSessionFromCookie(request.headers.get('Cookie') as string);

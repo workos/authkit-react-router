@@ -14,6 +14,13 @@ export async function signOut(request: Request) {
   return await terminateSession(request);
 }
 
+/**
+ * Switches the current session to a different organization.
+ * @param request - The incoming request object.
+ * @param organizationId - The ID of the organization to switch to.
+ * @param options - Optional parameters.
+ * @returns A redirect response to the specified returnTo URL or a data response with the updated auth data.
+ */
 export async function switchToOrganization(
   request: Request,
   organizationId: string,
