@@ -210,14 +210,14 @@ describe('auth', () => {
 
       expect(data).toHaveBeenCalledWith(
         {
-          successs: false,
+          success: false,
           error: 'Invalid organization',
         },
         { status: 400 },
       );
       expect(result).toEqual({
         data: {
-          successs: false,
+          success: false,
           error: 'Invalid organization',
         },
         init: { status: 400 },
@@ -232,7 +232,7 @@ describe('auth', () => {
 
       expect(data).toHaveBeenCalledWith(
         {
-          successs: false,
+          success: false,
           error: 'String error message',
         },
         { status: 400 },

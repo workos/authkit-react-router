@@ -54,7 +54,7 @@ export async function switchToOrganization(
 
     return data(
       {
-        successs: false,
+        success: false,
         error: error instanceof Error ? error.message : String(error),
       },
       { status: 400 },
