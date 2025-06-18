@@ -282,6 +282,7 @@ describe('session', () => {
           organizationId: null,
           permissions: null,
           entitlements: null,
+          featureFlags: null,
           role: null,
           sessionId: null,
           sealedSession: null,
@@ -352,6 +353,7 @@ describe('session', () => {
           role: 'admin',
           permissions: ['read', 'write'],
           entitlements: ['premium'],
+          feature_flags: ['flag-1', 'flag-2'],
         });
       });
 
@@ -400,6 +402,7 @@ describe('session', () => {
           organizationId: 'org-123',
           permissions: ['read', 'write'],
           entitlements: ['premium'],
+          featureFlags: ['flag-1', 'flag-2'],
           role: 'admin',
           sessionId: 'test-session-id',
           sealedSession: 'encrypted-jwt',
@@ -506,6 +509,7 @@ describe('session', () => {
               role: null,
               permissions: [],
               entitlements: [],
+              feature_flags: [],
             };
           }
           if (token === 'new.valid.token') {
@@ -515,6 +519,7 @@ describe('session', () => {
               role: 'user',
               permissions: ['read'],
               entitlements: ['basic'],
+              feature_flags: ['flag-1'],
             };
           }
           return {}; // fallback
@@ -539,6 +544,7 @@ describe('session', () => {
             role: 'user',
             permissions: ['read'],
             entitlements: ['basic'],
+            featureFlags: ['flag-1'],
           }),
         );
 
@@ -659,6 +665,7 @@ describe('session', () => {
         role: 'user',
         permissions: ['read'],
         entitlements: ['basic'],
+        feature_flags: ['flag-1'],
       });
     });
 
@@ -683,6 +690,7 @@ describe('session', () => {
         role: 'user',
         permissions: ['read'],
         entitlements: ['basic'],
+        featureFlags: ['flag-1'],
         impersonator: null,
         sealedSession: 'encrypted-jwt',
         headers: {

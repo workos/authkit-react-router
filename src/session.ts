@@ -73,6 +73,7 @@ export async function refreshSession(request: Request, { organizationId }: { org
       role,
       permissions,
       entitlements,
+      featureFlags,
     } = getClaimsFromAccessToken(accessToken);
 
     return {
@@ -83,6 +84,7 @@ export async function refreshSession(request: Request, { organizationId }: { org
       role,
       permissions,
       entitlements,
+      featureFlags,
       impersonator: session.impersonator || null,
       sealedSession: cookieSession.get('jwt'),
       headers: newSession.headers,
@@ -323,6 +325,7 @@ export async function authkitLoader<Data = unknown>(
         organizationId: null,
         permissions: null,
         entitlements: null,
+        featureFlags: null,
         role: null,
         sessionId: null,
         sealedSession: null,
@@ -338,6 +341,7 @@ export async function authkitLoader<Data = unknown>(
       role = null,
       permissions = [],
       entitlements = [],
+      featureFlags = [],
     } = getClaimsFromAccessToken(session.accessToken);
 
     const cookieSession = await getSession(request.headers.get('Cookie'));
@@ -361,6 +365,7 @@ export async function authkitLoader<Data = unknown>(
       role,
       permissions,
       entitlements,
+      featureFlags,
       impersonator,
       sealedSession: cookieSession.get('jwt'),
     };
@@ -473,6 +478,7 @@ export function getClaimsFromAccessToken(accessToken: string) {
     role,
     permissions,
     entitlements,
+    feature_flags: featureFlags,
     exp,
     iss,
   } = decodeJwt<AccessToken>(accessToken);
@@ -485,6 +491,7 @@ export function getClaimsFromAccessToken(accessToken: string) {
     role,
     permissions,
     entitlements,
+    featureFlags,
   };
 }
 
