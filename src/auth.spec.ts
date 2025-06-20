@@ -110,6 +110,7 @@ describe('auth', () => {
       role: 'admin' as string | undefined,
       permissions: ['read', 'write'] as string[] | undefined,
       entitlements: ['premium'] as string[] | undefined,
+      featureFlags: ['flag-1', 'flag-2'] as string[] | undefined,
       impersonator: null,
       sealedSession: 'sealed-session-data',
       headers: {
@@ -340,6 +341,7 @@ describe('auth', () => {
         role: 'admin',
         permissions: ['read', 'write'],
         entitlements: ['feature-1', 'feature-2'],
+        featureFlags: ['flag-1', 'flag-2'],
         exp: Date.now() / 1000 + 3600, // 1 hour from now
         iss: 'https://api.workos.com',
       };
@@ -361,6 +363,7 @@ describe('auth', () => {
         role: mockClaims.role,
         permissions: mockClaims.permissions,
         entitlements: mockClaims.entitlements,
+        featureFlags: mockClaims.featureFlags,
         impersonator: mockSession.impersonator,
         accessToken: mockSession.accessToken,
       });
@@ -394,6 +397,7 @@ describe('auth', () => {
         role: 'admin',
         permissions: ['read', 'write'],
         entitlements: ['feature-1', 'feature-2'],
+        featureFlags: ['flag-1', 'flag-2'],
         exp: Date.now() / 1000 - 3600, // 1 hour ago (expired)
         iss: 'https://api.workos.com',
       };
@@ -417,6 +421,7 @@ describe('auth', () => {
         role: mockClaims.role,
         permissions: mockClaims.permissions,
         entitlements: mockClaims.entitlements,
+        featureFlags: mockClaims.featureFlags,
         impersonator: undefined,
         accessToken: mockSession.accessToken,
       });

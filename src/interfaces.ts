@@ -57,6 +57,7 @@ export interface AccessToken {
   role?: string;
   permissions?: string[];
   entitlements?: string[];
+  feature_flags?: string[];
 }
 
 export interface UserInfo {
@@ -66,6 +67,7 @@ export interface UserInfo {
   role?: string;
   permissions?: string[];
   entitlements?: string[];
+  featureFlags?: string[];
   impersonator?: Impersonator;
   accessToken: string;
 }
@@ -77,6 +79,7 @@ export interface NoUserInfo {
   role?: undefined;
   permissions?: undefined;
   entitlements?: undefined;
+  featureFlags?: undefined;
   impersonator?: undefined;
   accessToken?: undefined;
 }
@@ -110,6 +113,7 @@ export interface AuthorizedData {
   role: string | null;
   permissions: string[];
   entitlements: string[];
+  featureFlags: string[];
   impersonator: Impersonator | null;
   sealedSession: string;
 }
@@ -122,6 +126,7 @@ export interface UnauthorizedData {
   role: null;
   permissions: null;
   entitlements: null;
+  featureFlags: null;
   impersonator: null;
   sealedSession: null;
 }
