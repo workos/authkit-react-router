@@ -533,6 +533,7 @@ describe('session', () => {
         expect(authenticateWithRefreshToken).toHaveBeenCalledWith({
           clientId: expect.any(String),
           refreshToken: 'refresh.token',
+          organizationId: 'org-123',
         });
 
         // Verify the response contains the new token data
