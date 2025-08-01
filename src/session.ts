@@ -164,10 +164,12 @@ type LoaderValue<Data> = Response | TypedResponse<Data> | NonNullable<Data> | nu
 type LoaderReturnValue<Data> = Promise<LoaderValue<Data>> | LoaderValue<Data>;
 
 type AuthLoader<Data> = (
-  args: LoaderFunctionArgs & { auth: AuthorizedData | UnauthorizedData },
+  args: LoaderFunctionArgs & { auth: AuthorizedData | UnauthorizedData; getAccessToken: () => string | null },
 ) => LoaderReturnValue<Data>;
 
-type AuthorizedAuthLoader<Data> = (args: LoaderFunctionArgs & { auth: AuthorizedData }) => LoaderReturnValue<Data>;
+type AuthorizedAuthLoader<Data> = (
+  args: LoaderFunctionArgs & { auth: AuthorizedData; getAccessToken: () => string },
+) => LoaderReturnValue<Data>;
 
 /**
  * This loader handles authentication state, session management, and access token refreshing
@@ -322,7 +324,6 @@ export async function authkitLoader<Data = unknown>(
 
       const auth: UnauthorizedData = {
         user: null,
-        accessToken: null,
         impersonator: null,
         organizationId: null,
         permissions: null,
@@ -330,7 +331,6 @@ export async function authkitLoader<Data = unknown>(
         featureFlags: null,
         role: null,
         sessionId: null,
-        sealedSession: null,
       };
 
       return await handleAuthLoader(loader, loaderArgs, auth);
@@ -346,7 +346,6 @@ export async function authkitLoader<Data = unknown>(
       featureFlags = [],
     } = getClaimsFromAccessToken(session.accessToken);
 
-    const cookieSession = await getSession(request.headers.get('Cookie'));
     const { impersonator = null } = session;
 
     // checking for 'headers' in session determines if the session was refreshed or not
@@ -362,14 +361,12 @@ export async function authkitLoader<Data = unknown>(
     const auth: AuthorizedData = {
       user: session.user,
       sessionId,
-      accessToken: session.accessToken,
       organizationId,
       role,
       permissions,
       entitlements,
       featureFlags,
       impersonator,
-      sealedSession: cookieSession.get('jwt'),
     };
 
     return await handleAuthLoader(loader, loaderArgs, auth, session);
@@ -420,7 +417,26 @@ async function handleAuthLoader(
 
   // If there's a custom loader, get the resulting data and return it with our
   // auth data plus session cookie header
-  const loaderResult = await loader({ ...args, auth: auth as AuthorizedData });
+  let loaderResult;
+
+  if (auth.user) {
+    // Authorized case
+    const getAccessToken = () => {
+      if (!session?.accessToken) {
+        throw new Error('No access token available');
+      }
+      return session.accessToken;
+    };
+    loaderResult = await (loader as AuthorizedAuthLoader<unknown>)({
+      ...args,
+      auth: auth as AuthorizedData,
+      getAccessToken,
+    });
+  } else {
+    // Unauthorized case
+    const getAccessToken = () => null;
+    loaderResult = await (loader as AuthLoader<unknown>)({ ...args, auth, getAccessToken });
+  }
 
   if (isResponse(loaderResult)) {
     // If the result is a redirect, return it unedited

@@ -108,27 +108,23 @@ export type AuthKitLoaderOptions = {
 export interface AuthorizedData {
   user: User;
   sessionId: string;
-  accessToken: string;
   organizationId: string | null;
   role: string | null;
   permissions: string[];
   entitlements: string[];
   featureFlags: string[];
   impersonator: Impersonator | null;
-  sealedSession: string;
 }
 
 export interface UnauthorizedData {
   user: null;
   sessionId: null;
-  accessToken: null;
   organizationId: null;
   role: null;
   permissions: null;
   entitlements: null;
   featureFlags: null;
   impersonator: null;
-  sealedSession: null;
 }
 
 /**
