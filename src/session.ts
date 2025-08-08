@@ -55,7 +55,7 @@ export async function refreshSession(request: Request, { organizationId }: { org
     const newSession = {
       accessToken,
       refreshToken,
-      user: user,
+      user,
       impersonator,
       headers: {} as Record<string, string>,
     };
