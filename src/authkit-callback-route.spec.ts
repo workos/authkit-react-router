@@ -249,7 +249,7 @@ describe('authLoader', () => {
       expect(response.status).toBe(302);
 
       // The redirect URL should use HTTPS but preserve the request port (3000)
-      // This documents current behavior - may need adjustment if port should come from config
+      // The redirect URL should use HTTPS and preserve the request port (3000)
       const location = response.headers.get('Location');
       expect(location).toBe('https://example.com:3000/');
       expect(new URL(location!).port).toBe('3000');
