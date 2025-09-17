@@ -55,6 +55,7 @@ export interface AccessToken {
   sid: string;
   org_id?: string;
   role?: string;
+  roles?: string[];
   permissions?: string[];
   entitlements?: string[];
   feature_flags?: string[];
@@ -65,6 +66,7 @@ export interface UserInfo {
   sessionId: string;
   organizationId?: string;
   role?: string;
+  roles?: string[];
   permissions?: string[];
   entitlements?: string[];
   featureFlags?: string[];
@@ -77,6 +79,7 @@ export interface NoUserInfo {
   sessionId?: undefined;
   organizationId?: undefined;
   role?: undefined;
+  roles?: undefined;
   permissions?: undefined;
   entitlements?: undefined;
   featureFlags?: undefined;
@@ -110,6 +113,7 @@ export interface AuthorizedData {
   sessionId: string;
   organizationId: string | null;
   role: string | null;
+  roles: string[] | null;
   permissions: string[];
   entitlements: string[];
   featureFlags: string[];
@@ -121,6 +125,7 @@ export interface UnauthorizedData {
   sessionId: null;
   organizationId: null;
   role: null;
+  roles: null;
   permissions: null;
   entitlements: null;
   featureFlags: null;

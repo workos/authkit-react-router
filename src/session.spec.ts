@@ -293,6 +293,7 @@ describe('session', () => {
           entitlements: null,
           featureFlags: null,
           role: null,
+          roles: null,
           sessionId: null,
         });
       });
@@ -359,6 +360,7 @@ describe('session', () => {
           sid: 'test-session-id',
           org_id: 'org-123',
           role: 'admin',
+          roles: ['admin'],
           permissions: ['read', 'write'],
           entitlements: ['premium'],
           feature_flags: ['flag-1', 'flag-2'],
@@ -411,6 +413,7 @@ describe('session', () => {
           entitlements: ['premium'],
           featureFlags: ['flag-1', 'flag-2'],
           role: 'admin',
+          roles: ['admin'],
           sessionId: 'test-session-id',
         });
       });
@@ -559,6 +562,7 @@ describe('session', () => {
               sid: 'test-session-id',
               org_id: 'org-123',
               role: null,
+              roles: [],
               permissions: [],
               entitlements: [],
               feature_flags: [],
@@ -569,6 +573,7 @@ describe('session', () => {
               sid: 'new-session-id',
               org_id: 'org-123',
               role: 'user',
+              roles: ['user'],
               permissions: ['read'],
               entitlements: ['basic'],
               feature_flags: ['flag-1'],
@@ -594,6 +599,7 @@ describe('session', () => {
             sessionId: 'new-session-id',
             organizationId: 'org-123',
             role: 'user',
+            roles: ['user'],
             permissions: ['read'],
             entitlements: ['basic'],
             featureFlags: ['flag-1'],
@@ -738,6 +744,7 @@ describe('session', () => {
         sid: 'new-session-id',
         org_id: 'org-123',
         role: 'user',
+        roles: ['user'],
         permissions: ['read'],
         entitlements: ['basic'],
         feature_flags: ['flag-1'],
@@ -763,6 +770,7 @@ describe('session', () => {
         accessToken: 'new.valid.token',
         organizationId: 'org-123',
         role: 'user',
+        roles: ['user'],
         permissions: ['read'],
         entitlements: ['basic'],
         featureFlags: ['flag-1'],
