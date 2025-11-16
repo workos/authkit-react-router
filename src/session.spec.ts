@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs, Session as ReactRouterSession, redirect } from 'react-router';
+import { ActionFunctionArgs, LoaderFunctionArgs, Session as ReactRouterSession, redirect } from 'react-router';
 import { AuthenticationResponse } from '@workos-inc/node';
 import * as ironSession from 'iron-session';
 import * as jose from 'jose';
@@ -7,7 +7,7 @@ import {
   getSessionStorage as getSessionStorageMock,
 } from './sessionStorage.js';
 import { Session } from './interfaces.js';
-import { authkitLoader, encryptSession, terminateSession, refreshSession } from './session.js';
+import { authkitAction, authkitLoader, encryptSession, terminateSession, refreshSession } from './session.js';
 import { assertIsResponse } from './test-utils/test-helpers.js';
 import { getWorkOS } from './workos.js';
 import { getConfig } from './config.js';
@@ -523,6 +523,318 @@ describe('session', () => {
             user: null,
           }),
         );
+      });
+    });
+
+    describe('authkitAction', () => {
+      const createActionArgs = (request: Request): ActionFunctionArgs => ({
+        request,
+        params: {},
+        context: {},
+      });
+
+      describe('unauthenticated flows', () => {
+        beforeEach(() => {
+          const mockSession = createMockSession({
+            has: jest.fn().mockReturnValue(false),
+            get: jest.fn(),
+          });
+          getSession.mockResolvedValue(mockSession);
+          unsealData.mockResolvedValue(null);
+        });
+
+        it('should return unauthorized data when no session exists', async () => {
+          const { data } = await authkitAction(createActionArgs(createMockRequest()));
+
+          expect(data).toEqual({
+            user: null,
+            impersonator: null,
+            organizationId: null,
+            permissions: null,
+            entitlements: null,
+            featureFlags: null,
+            role: null,
+            roles: null,
+            sessionId: null,
+          });
+        });
+
+        it('should redirect when ensureSignedIn is true', async () => {
+          try {
+            await authkitAction(createActionArgs(createMockRequest()), { ensureSignedIn: true });
+            fail('Expected redirect response to be thrown');
+          } catch (response: unknown) {
+            assertIsResponse(response);
+            expect(response.status).toBe(302);
+            expect(response.headers.get('Location')).toMatch(/^https:\/\/auth\.workos\.com\/oauth/);
+            expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          }
+        });
+      });
+
+      describe('authenticated flows', () => {
+        const mockSessionData = {
+          accessToken: 'action.jwt.token',
+          refreshToken: 'refresh.token',
+          user: {
+            id: 'user-1',
+            email: 'test@example.com',
+          },
+          impersonator: null,
+        };
+
+        beforeEach(() => {
+          const mockSession = createMockSession({
+            has: jest.fn().mockReturnValue(true),
+            get: jest.fn().mockReturnValue('encrypted-jwt'),
+            set: jest.fn(),
+          });
+          getSession.mockResolvedValue(mockSession);
+          unsealData.mockResolvedValue({
+            ...mockSessionData,
+            headers: {
+              'Set-Cookie': 'action-session-cookie',
+            },
+          });
+          jwtVerify.mockResolvedValue({
+            payload: {},
+            protectedHeader: {},
+            key: new TextEncoder().encode('test-key'),
+          } as jose.JWTVerifyResult & jose.ResolvedKey<jose.KeyLike>);
+          (jose.decodeJwt as jest.Mock).mockReturnValue({
+            sid: 'test-session-id',
+            org_id: 'org-123',
+            role: 'member',
+            roles: ['member'],
+            permissions: ['read'],
+            entitlements: ['basic'],
+            feature_flags: ['flag-1'],
+          });
+        });
+
+        it('should merge custom action data with auth data', async () => {
+          const customAction = jest.fn().mockResolvedValue({
+            actionData: 'test',
+          });
+
+          const { data } = await authkitAction(createActionArgs(createMockRequest()), customAction);
+
+          expect(customAction).toHaveBeenCalled();
+          expect(data).toEqual(
+            expect.objectContaining({
+              actionData: 'test',
+              user: mockSessionData.user,
+              sessionId: 'test-session-id',
+            }),
+          );
+        });
+
+        it('should provide getAccessToken to custom actions', async () => {
+          const customAction = jest.fn().mockImplementation(({ getAccessToken }) => {
+            return { retrievedToken: getAccessToken() };
+          });
+
+          const { data } = await authkitAction(createActionArgs(createMockRequest()), customAction);
+
+          expect(customAction).toHaveBeenCalledWith(
+            expect.objectContaining({
+              auth: expect.objectContaining({ user: mockSessionData.user }),
+              getAccessToken: expect.any(Function),
+            }),
+          );
+          expect(data).toEqual(
+            expect.objectContaining({
+              retrievedToken: mockSessionData.accessToken,
+              user: mockSessionData.user,
+            }),
+          );
+        });
+
+        it('should pass through custom Responses and append cookies', async () => {
+          const customAction = jest.fn().mockReturnValue(
+            new Response(JSON.stringify({ ok: true }), {
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          );
+
+          const { data, init } = await authkitAction(createActionArgs(createMockRequest()), customAction);
+
+          expect(getHeaderValue(init?.headers, 'Set-Cookie')).toBe('action-session-cookie');
+          expect(data).toEqual(
+            expect.objectContaining({
+              ok: true,
+              user: mockSessionData.user,
+            }),
+          );
+        });
+
+        describe('session refresh during action', () => {
+          beforeEach(() => {
+            // Setup session with expired token
+            const mockSession = createMockSession({
+              has: jest.fn().mockReturnValue(true),
+              get: jest.fn().mockReturnValue('encrypted-jwt'),
+              set: jest.fn(),
+            });
+            getSession.mockResolvedValue(mockSession);
+
+            const expiredSessionData = {
+              accessToken: 'expired.token',
+              refreshToken: 'refresh.token',
+              user: { id: 'user-1' },
+              impersonator: null,
+            };
+            unsealData.mockResolvedValue(expiredSessionData);
+            sealData.mockResolvedValue('new-encrypted-jwt');
+            commitSession.mockResolvedValue('new-action-session-cookie');
+
+            // Token verification fails
+            jwtVerify.mockRejectedValue(new Error('Token expired'));
+
+            // But refresh succeeds
+            authenticateWithRefreshToken.mockResolvedValue({
+              accessToken: 'new.valid.action.token',
+              refreshToken: 'new.refresh.token',
+              user: {
+                object: 'user',
+                id: 'user-1',
+                email: 'test@example.com',
+                emailVerified: true,
+                profilePictureUrl: null,
+                firstName: 'Test',
+                lastName: 'User',
+                lastSignInAt: '2021-01-01T00:00:00Z',
+                createdAt: '2021-01-01T00:00:00Z',
+                updatedAt: '2021-01-01T00:00:00Z',
+                externalId: null,
+              },
+            } as AuthenticationResponse);
+
+            // Mock different JWT decoding results for expired vs new token
+            (jose.decodeJwt as jest.Mock).mockImplementation((token: string) => {
+              if (token === 'expired.token') {
+                return {
+                  sid: 'test-session-id',
+                  org_id: 'org-123',
+                  role: null,
+                  roles: [],
+                  permissions: [],
+                  entitlements: [],
+                  feature_flags: [],
+                };
+              }
+              if (token === 'new.valid.action.token') {
+                return {
+                  sid: 'new-session-id',
+                  org_id: 'org-123',
+                  role: 'user',
+                  roles: ['user'],
+                  permissions: ['read'],
+                  entitlements: ['basic'],
+                  feature_flags: ['flag-1'],
+                };
+              }
+              return {}; // fallback
+            });
+          });
+
+          it('should refresh session when access token is invalid', async () => {
+            const { data, init } = await authkitAction(createActionArgs(createMockRequest()));
+
+            // Verify the refresh token flow was triggered
+            expect(authenticateWithRefreshToken).toHaveBeenCalledWith({
+              clientId: expect.any(String),
+              refreshToken: 'refresh.token',
+              organizationId: 'org-123',
+            });
+
+            // Verify the response contains the new token data
+            expect(data).toEqual(
+              expect.objectContaining({
+                sessionId: 'new-session-id',
+                organizationId: 'org-123',
+                role: 'user',
+                roles: ['user'],
+                permissions: ['read'],
+                entitlements: ['basic'],
+                featureFlags: ['flag-1'],
+              }),
+            );
+
+            // Verify cookie was set
+            expect(getHeaderValue(init?.headers, 'Set-Cookie')).toBe('new-action-session-cookie');
+          });
+
+          it('should redirect to authorization URL preserving returnPathname when action refresh fails', async () => {
+            authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
+
+            // Setup the mock to return a URL with state parameter
+            getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize?state=abc123');
+
+            try {
+              const mockRequest = createMockRequest('test-cookie', 'https://app.example.com/dashboard/data');
+              await authkitAction(createActionArgs(mockRequest));
+              fail('Expected redirect response to be thrown');
+            } catch (response: unknown) {
+              assertIsResponse(response);
+              expect(response.status).toBe(302);
+              expect(response.headers.get('Location')).toBe('https://auth.workos.com/oauth/authorize?state=abc123');
+              expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+
+              // Verify getAuthorizationUrl was called with the correct returnPathname
+              expect(getAuthorizationUrlMock).toHaveBeenCalledWith({
+                returnPathname: '/dashboard/data',
+              });
+            }
+          });
+
+          it('calls onSessionRefreshSuccess when provided for action', async () => {
+            const onSessionRefreshSuccess = jest.fn();
+            await authkitAction(createActionArgs(createMockRequest()), {
+              onSessionRefreshSuccess,
+            });
+
+            expect(onSessionRefreshSuccess).toHaveBeenCalledWith({
+              accessToken: 'new.valid.action.token',
+              user: expect.objectContaining({ id: 'user-1' }),
+              impersonator: null,
+              organizationId: 'org-123',
+            });
+          });
+
+          it('calls onSessionRefreshError when provided and action refresh fails', async () => {
+            authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
+            const onSessionRefreshError = jest.fn().mockReturnValue(redirect('/error'));
+
+            await authkitAction(createActionArgs(createMockRequest()), {
+              onSessionRefreshError,
+            });
+
+            expect(onSessionRefreshError).toHaveBeenCalledWith(
+              expect.objectContaining({
+                error: expect.any(Error),
+                request: expect.any(Request),
+              }),
+            );
+          });
+
+          it('allows redirect from onSessionRefreshError callback in action', async () => {
+            authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
+
+            try {
+              await authkitAction(createActionArgs(createMockRequest()), {
+                onSessionRefreshError: () => {
+                  throw redirect('/custom-error');
+                },
+              });
+              fail('Expected redirect response to be thrown');
+            } catch (response: unknown) {
+              assertIsResponse(response);
+              expect(response.status).toBe(302);
+              expect(response.headers.get('Location')).toBe('/custom-error');
+            }
+          });
+        });
       });
     });
 

@@ -258,6 +258,36 @@ export const loader = (args: LoaderFunctionArgs) =>
   });
 ```
 
+### Authenticated actions
+
+AuthKit now provides helpers for React Router **actions** so you can enforce authentication in React Router's actions just as easily as in loaders.
+
+#### `authkitAction`
+
+Use `authkitAction` when you need the full flexibility of optional or required auth, custom storage, or refresh callbacks. Its API mirrors `authkitLoader`, and you receive the same `{ auth, getAccessToken }` arguments inside your action.
+
+```tsx
+import type { ActionFunctionArgs } from 'react-router';
+import { authkitAction } from '@workos-inc/authkit-react-router';
+
+export const action = (args: ActionFunctionArgs) =>
+  authkitAction(args, async ({ auth, getAccessToken }) => {
+    if (!auth.user) {
+      return { status: 'anonymous' };
+    }
+
+    const token = getAccessToken();
+    await fetch('https://api.example.com/secure', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    return { status: 'ok', sessionId: auth.sessionId };
+  });
+```
+
+When the action must always have an authenticated user, pass `{ ensureSignedIn: true }` as the final argument. That guarantees `getAccessToken()` will never return `null` and unauthenticated users will be redirected automatically.
+
 #### Security Considerations
 
 By default, access tokens are not included in the data sent to React components. This helps prevent unintentional token exposure in:

@@ -1,7 +1,8 @@
-import { data, redirect, type LoaderFunctionArgs, type SessionData } from 'react-router';
+import { data, redirect, type ActionFunctionArgs, type LoaderFunctionArgs, type SessionData } from 'react-router';
 import { getAuthorizationUrl } from './get-authorization-url.js';
 import type {
   AccessToken,
+  AuthKitActionOptions,
   AuthKitLoaderOptions,
   AuthorizedData,
   DataWithResponseInit,
@@ -174,6 +175,23 @@ type AuthLoader<Data> = (
 type AuthorizedAuthLoader<Data> = (
   args: LoaderFunctionArgs & { auth: AuthorizedData; getAccessToken: () => string },
 ) => LoaderReturnValue<Data>;
+
+type ActionValue<Data> = Response | DataWithResponseInit<Data> | NonNullable<Data> | null;
+type ActionReturnValue<Data> = Promise<ActionValue<Data>> | ActionValue<Data>;
+
+type AuthAction<Data> = (
+  args: ActionFunctionArgs & {
+    auth: AuthorizedData | UnauthorizedData;
+    getAccessToken: () => string | null;
+  },
+) => ActionReturnValue<Data>;
+
+type AuthorizedAuthAction<Data> = (
+  args: ActionFunctionArgs & {
+    auth: AuthorizedData;
+    getAccessToken: () => string;
+  },
+) => ActionReturnValue<Data>;
 
 /**
  * This loader handles authentication state, session management, and access token refreshing
@@ -413,6 +431,149 @@ export async function authkitLoader<Data = unknown>(
   }
 }
 
+export async function authkitAction(
+  actionArgs: ActionFunctionArgs,
+  options: AuthKitActionOptions & { ensureSignedIn: true },
+): Promise<DataWithResponseInit<AuthorizedData>>;
+
+export async function authkitAction(
+  actionArgs: ActionFunctionArgs,
+  options?: AuthKitActionOptions,
+): Promise<DataWithResponseInit<AuthorizedData | UnauthorizedData>>;
+
+export async function authkitAction<Data = unknown>(
+  actionArgs: ActionFunctionArgs,
+  action: AuthorizedAuthAction<Data>,
+  options: AuthKitActionOptions & { ensureSignedIn: true },
+): Promise<DataWithResponseInit<UnwrapData<Data> & AuthorizedData>>;
+
+export async function authkitAction<Data = unknown>(
+  actionArgs: ActionFunctionArgs,
+  action: AuthAction<Data>,
+  options?: AuthKitActionOptions,
+): Promise<DataWithResponseInit<UnwrapData<Data> & (AuthorizedData | UnauthorizedData)>>;
+
+export async function authkitAction<Data = unknown>(
+  actionArgs: ActionFunctionArgs,
+  actionOrOptions?: AuthAction<Data> | AuthorizedAuthAction<Data> | AuthKitActionOptions,
+  options: AuthKitActionOptions = {},
+) {
+  const action = typeof actionOrOptions === 'function' ? actionOrOptions : undefined;
+  const {
+    ensureSignedIn = false,
+    debug = false,
+    onSessionRefreshSuccess,
+    onSessionRefreshError,
+    storage,
+    cookie,
+  } = typeof actionOrOptions === 'object' ? actionOrOptions : options;
+
+  const cookieName = cookie?.name ?? getConfig('cookieName');
+  const { getSession, destroySession } = await configureSessionStorage({
+    storage,
+    cookieName,
+  });
+
+  const { request } = actionArgs;
+
+  try {
+    const session = await updateSession(request, debug);
+
+    if (!session) {
+      if (ensureSignedIn) {
+        const returnPathname = getReturnPathname(request.url);
+        const cookieSession = await getSession(request.headers.get('Cookie'));
+
+        throw redirect(await getAuthorizationUrl({ returnPathname }), {
+          headers: {
+            'Set-Cookie': await destroySession(cookieSession),
+          },
+        });
+      }
+
+      const auth: UnauthorizedData = {
+        user: null,
+        impersonator: null,
+        organizationId: null,
+        permissions: null,
+        entitlements: null,
+        featureFlags: null,
+        role: null,
+        roles: null,
+        sessionId: null,
+      };
+
+      return await handleAuthAction(action, actionArgs, auth);
+    }
+
+    const {
+      sessionId,
+      organizationId = null,
+      role = null,
+      roles = null,
+      permissions = [],
+      entitlements = [],
+      featureFlags = [],
+    } = getClaimsFromAccessToken(session.accessToken);
+
+    const { impersonator = null } = session;
+
+    if (onSessionRefreshSuccess && 'headers' in session) {
+      await onSessionRefreshSuccess({
+        accessToken: session.accessToken,
+        user: session.user,
+        impersonator,
+        organizationId,
+      });
+    }
+
+    const auth: AuthorizedData = {
+      user: session.user,
+      sessionId,
+      organizationId,
+      role,
+      roles,
+      permissions,
+      entitlements,
+      featureFlags,
+      impersonator,
+    };
+
+    return await handleAuthAction(action, actionArgs, auth, session);
+  } catch (error) {
+    if (error instanceof SessionRefreshError) {
+      const cookieSession = await getSession(request.headers.get('Cookie'));
+
+      if (onSessionRefreshError) {
+        try {
+          const result = await onSessionRefreshError({
+            error: error.cause,
+            request,
+            sessionData: cookieSession,
+          });
+
+          if (result instanceof Response) {
+            return result;
+          }
+        } catch (callbackError) {
+          if (callbackError instanceof Response) {
+            throw callbackError;
+          }
+        }
+      }
+
+      const returnPathname = getReturnPathname(request.url);
+      throw redirect(await getAuthorizationUrl({ returnPathname }), {
+        headers: {
+          'Set-Cookie': await destroySession(cookieSession),
+        },
+      });
+    }
+
+    throw error;
+  }
+}
+
 async function handleAuthLoader(
   loader: AuthLoader<unknown> | AuthorizedAuthLoader<unknown> | undefined,
   args: LoaderFunctionArgs,
@@ -470,6 +631,76 @@ async function handleAuthLoader(
   // If the loader returns a non-Response, assume it's a data object
   // istanbul ignore next
   return data({ ...loaderResult, ...auth }, session ? { headers: { ...session.headers } } : undefined);
+}
+
+async function handleAuthAction(
+  action: AuthAction<unknown> | AuthorizedAuthAction<unknown> | undefined,
+  args: ActionFunctionArgs,
+  auth: AuthorizedData | UnauthorizedData,
+  session?: Session,
+) {
+  if (!action) {
+    return data(auth, session ? { headers: { ...session.headers } } : undefined);
+  }
+
+  let actionResult;
+
+  if (auth.user) {
+    const getAccessToken = () => {
+      if (!session?.accessToken) {
+        throw new Error('No access token available');
+      }
+      return session.accessToken;
+    };
+
+    actionResult = await (action as AuthorizedAuthAction<unknown>)({
+      ...args,
+      auth: auth as AuthorizedData,
+      getAccessToken,
+    });
+  } else {
+    const getAccessToken = () => null;
+
+    actionResult = await (action as AuthAction<unknown>)({
+      ...args,
+      auth,
+      getAccessToken,
+    });
+  }
+
+  if (isResponse(actionResult)) {
+    if (isRedirect(actionResult)) {
+      throw actionResult;
+    }
+
+    const newResponse = new Response(actionResult.body, actionResult);
+
+    if (session) {
+      newResponse.headers.append('Set-Cookie', session.headers['Set-Cookie']);
+    }
+
+    if (!isJsonResponse(newResponse)) {
+      return newResponse;
+    }
+
+    const responseData = await newResponse.json();
+
+    return data({ ...responseData, ...auth }, newResponse);
+  }
+
+  const actualData = isDataWithResponseInit(actionResult) ? actionResult.data : actionResult;
+
+  const mergedHeaders = isDataWithResponseInit(actionResult) ? new Headers(actionResult.init?.headers) : new Headers();
+
+  if (session?.headers) {
+    Object.entries(session.headers).forEach(([key, value]) => {
+      mergedHeaders.set(key, value);
+    });
+  }
+
+  const mergedData = actualData && typeof actualData === 'object' ? { ...actualData, ...auth } : { ...auth };
+
+  return data(mergedData, { headers: mergedHeaders });
 }
 
 export async function terminateSession(request: Request, { returnTo }: { returnTo?: string } = {}) {
