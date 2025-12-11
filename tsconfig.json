@@ -4,6 +4,7 @@
     "target": "ES2022",
     "lib": ["DOM", "ES2022", "DOM.Iterable"],
     "jsx": "react",
+    "isolatedModules": true,
     "module": "Node16",
     "moduleResolution": "Node16",
     "sourceMap": true,
