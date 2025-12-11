@@ -10,13 +10,6 @@ import { isDataWithResponseInit } from './utils.js';
 import { DataWithResponseInit } from './interfaces.js';
 import type { LoaderFunctionArgs } from 'react-router';
 
-const getMockLoaderFunctionArgs = (request: Request) =>
-  ({
-    request,
-    params: {},
-    context: {},
-  }) as LoaderFunctionArgs;
-
 // Mock dependencies
 const fakeWorkosInstance = {
   userManagement: {
@@ -55,7 +48,11 @@ describe('authLoader', () => {
 
   describe('error handling', () => {
     it('returns undefined if there is no code', async () => {
-      const response = await loader(getMockLoaderFunctionArgs(new Request('https://example.com')));
+      const response = await loader({
+        request: new Request('https://example.com'),
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs);
 
       expect(response).toBeUndefined();
     });
@@ -63,7 +60,11 @@ describe('authLoader', () => {
     it('should handle authentication failure', async () => {
       authenticateWithCode.mockRejectedValue(new Error('Auth failed'));
       request = createRequestWithSearchParams(request, { code: 'invalid-code' });
-      const response = (await loader(getMockLoaderFunctionArgs(request))) as DataWithResponseInit<unknown>;
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
       expect(isDataWithResponseInit(response)).toBeTruthy();
 
       expect(response?.init?.status).toBe(500);
@@ -129,19 +130,23 @@ describe('authLoader', () => {
   it('handles calling onSuccess when provided', async () => {
     const onSuccess = jest.fn();
     loader = authLoader({ onSuccess });
-    await loader(getMockLoaderFunctionArgs(request));
+    await loader({
+      request,
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
 
     expect(onSuccess).toHaveBeenCalled();
   });
 
   it('uses returnPathname from state when provided', async () => {
-    const response = await loader(
-      getMockLoaderFunctionArgs(
-        createRequestWithSearchParams(request, {
-          state: btoa(JSON.stringify({ returnPathname: '/profile' })),
-        }),
-      ),
-    );
+    const response = await loader({
+      request: createRequestWithSearchParams(request, {
+        state: btoa(JSON.stringify({ returnPathname: '/profile' })),
+      }),
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
     assertIsResponse(response);
     expect(response.status).toBe(302);
     expect(response.headers.get('Location')).toBe('http://example.com/profile');
@@ -159,7 +164,11 @@ describe('authLoader', () => {
 
     loader = authLoader({ onSuccess });
 
-    await loader(getMockLoaderFunctionArgs(request));
+    await loader({
+      request,
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
 
     expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ impersonator: { email: 'test@example.com' } }));
   });
@@ -179,7 +188,11 @@ describe('authLoader', () => {
 
     loader = authLoader({ onSuccess });
 
-    await loader(getMockLoaderFunctionArgs(request));
+    await loader({
+      request,
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
 
     expect(onSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -199,7 +212,11 @@ describe('authLoader', () => {
       });
 
       const loader = authLoader();
-      const response = await loader(getMockLoaderFunctionArgs(request));
+      const response = await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs);
 
       // Should be a redirect response
       assertIsResponse(response);
@@ -230,7 +247,11 @@ describe('authLoader', () => {
       });
 
       const loader = authLoader();
-      const response = await loader(getMockLoaderFunctionArgs(request));
+      const response = await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs);
 
       // Should be a redirect response
       assertIsResponse(response);
