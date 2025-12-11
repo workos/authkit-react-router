@@ -21,7 +21,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: .nvmrc
+          # TODO: Update this to use `node-version-file` once main is updated to include it
+          # node-version-file: .nvmrc
+          node-version: 24.x
 
       - name: Run Coana on the ${{github.base_ref}} branch
         run: |
