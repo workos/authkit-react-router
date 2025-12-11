@@ -8,6 +8,14 @@ import {
 import { configureSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit } from './utils.js';
 import { DataWithResponseInit } from './interfaces.js';
+import type { LoaderFunctionArgs } from 'react-router';
+
+const getMockLoaderFunctionArgs = (request: Request) =>
+  ({
+    request,
+    params: {},
+    context: {},
+  }) as LoaderFunctionArgs;
 
 // Mock dependencies
 const fakeWorkosInstance = {
@@ -47,11 +55,7 @@ describe('authLoader', () => {
 
   describe('error handling', () => {
     it('returns undefined if there is no code', async () => {
-      const response = await loader({
-        request: new Request('https://example.com'),
-        params: {},
-        context: {},
-      });
+      const response = await loader(getMockLoaderFunctionArgs(new Request('https://example.com')));
 
       expect(response).toBeUndefined();
     });
@@ -59,7 +63,7 @@ describe('authLoader', () => {
     it('should handle authentication failure', async () => {
       authenticateWithCode.mockRejectedValue(new Error('Auth failed'));
       request = createRequestWithSearchParams(request, { code: 'invalid-code' });
-      const response = (await loader({ request, params: {}, context: {} })) as DataWithResponseInit<unknown>;
+      const response = (await loader(getMockLoaderFunctionArgs(request))) as DataWithResponseInit<unknown>;
       expect(isDataWithResponseInit(response)).toBeTruthy();
 
       expect(response?.init?.status).toBe(500);
@@ -68,7 +72,11 @@ describe('authLoader', () => {
     it('should handle authentication failure with string error', async () => {
       authenticateWithCode.mockRejectedValue('Auth failed');
       request = createRequestWithSearchParams(request, { code: 'invalid-code' });
-      const response = (await loader({ request, params: {}, context: {} })) as DataWithResponseInit<unknown>;
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
       expect(isDataWithResponseInit(response)).toBeTruthy();
 
       expect(response?.init?.status).toBe(500);
@@ -80,7 +88,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     expect(workos.userManagement.authenticateWithCode).toHaveBeenCalledWith({
       clientId: process.env.WORKOS_CLIENT_ID,
@@ -98,7 +106,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     assertIsResponse(response);
     expect(response.status).toBe(302);
@@ -111,7 +119,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     assertIsResponse(response);
     expect(response.status).toBe(302);
@@ -121,23 +129,19 @@ describe('authLoader', () => {
   it('handles calling onSuccess when provided', async () => {
     const onSuccess = jest.fn();
     loader = authLoader({ onSuccess });
-    await loader({
-      request,
-      params: {},
-      context: {},
-    });
+    await loader(getMockLoaderFunctionArgs(request));
 
     expect(onSuccess).toHaveBeenCalled();
   });
 
   it('uses returnPathname from state when provided', async () => {
-    const response = await loader({
-      request: createRequestWithSearchParams(request, {
-        state: btoa(JSON.stringify({ returnPathname: '/profile' })),
-      }),
-      params: {},
-      context: {},
-    });
+    const response = await loader(
+      getMockLoaderFunctionArgs(
+        createRequestWithSearchParams(request, {
+          state: btoa(JSON.stringify({ returnPathname: '/profile' })),
+        }),
+      ),
+    );
     assertIsResponse(response);
     expect(response.status).toBe(302);
     expect(response.headers.get('Location')).toBe('http://example.com/profile');
@@ -155,11 +159,7 @@ describe('authLoader', () => {
 
     loader = authLoader({ onSuccess });
 
-    await loader({
-      request,
-      params: {},
-      context: {},
-    });
+    await loader(getMockLoaderFunctionArgs(request));
 
     expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ impersonator: { email: 'test@example.com' } }));
   });
@@ -179,11 +179,7 @@ describe('authLoader', () => {
 
     loader = authLoader({ onSuccess });
 
-    await loader({
-      request,
-      params: {},
-      context: {},
-    });
+    await loader(getMockLoaderFunctionArgs(request));
 
     expect(onSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -203,11 +199,7 @@ describe('authLoader', () => {
       });
 
       const loader = authLoader();
-      const response = await loader({
-        request,
-        params: {},
-        context: {},
-      });
+      const response = await loader(getMockLoaderFunctionArgs(request));
 
       // Should be a redirect response
       assertIsResponse(response);
@@ -238,11 +230,7 @@ describe('authLoader', () => {
       });
 
       const loader = authLoader();
-      const response = await loader({
-        request,
-        params: {},
-        context: {},
-      });
+      const response = await loader(getMockLoaderFunctionArgs(request));
 
       // Should be a redirect response
       assertIsResponse(response);

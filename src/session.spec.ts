@@ -1,5 +1,5 @@
 import { LoaderFunctionArgs, Session as ReactRouterSession, redirect } from 'react-router';
-import { AuthenticationResponse } from '@workos-inc/node';
+import { AuthenticationResponse, type User } from '@workos-inc/node';
 import * as ironSession from 'iron-session';
 import * as jose from 'jose';
 import {
@@ -142,7 +142,9 @@ describe('session', () => {
           createdAt: '2021-01-01T00:00:00Z',
           updatedAt: '2021-01-01T00:00:00Z',
           lastSignInAt: '2021-01-01T00:00:00Z',
-        },
+          locale: null,
+          metadata: {},
+        } satisfies User,
         impersonator: undefined,
         headers: {},
       } satisfies Session;
@@ -265,11 +267,12 @@ describe('session', () => {
   });
 
   describe('authkitLoader', () => {
-    const createLoaderArgs = (request: Request): LoaderFunctionArgs => ({
-      request,
-      params: {},
-      context: {},
-    });
+    const createLoaderArgs = (request: Request): LoaderFunctionArgs =>
+      ({
+        request,
+        params: {},
+        context: {},
+      }) as LoaderFunctionArgs;
 
     describe('unauthenticated flows', () => {
       beforeEach(() => {
