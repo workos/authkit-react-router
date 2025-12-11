@@ -14,14 +14,16 @@ jobs:
           separator: ' '
 
       - name: Checkout the ${{github.base_ref}} branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{github.base_ref}} # checkout the base branch (usually master/main).
 
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v6
         with:
-          node-version: 20.x
+          # TODO: Update this to use `node-version-file` once main is updated to include it
+          # node-version-file: .nvmrc
+          node-version: 24.x
 
       - name: Run Coana on the ${{github.base_ref}} branch
         run: |
@@ -37,7 +39,7 @@ jobs:
         run: sudo chown -R $USER:$USER .
 
       - name: Checkout the current branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           clean: true
 
