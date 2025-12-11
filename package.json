@@ -19,6 +19,7 @@
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
     "build": "tsc --project tsconfig-cjs.json",
+    "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run lint",
     "lint": "eslint \"src/**/*.ts*\"",
     "test": "jest",
