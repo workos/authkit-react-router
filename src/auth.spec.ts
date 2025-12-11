@@ -99,7 +99,9 @@ describe('auth', () => {
       updatedAt: '2021-01-01T00:00:00Z',
       lastSignInAt: '2021-01-01T00:00:00Z',
       externalId: null,
-    } as User;
+      locale: null,
+      metadata: {},
+    } satisfies User;
 
     // Mock the return type of refreshSession
     const mockAuthResponse = {
@@ -327,7 +329,9 @@ describe('auth', () => {
           updatedAt: '2023-01-01T00:00:00Z',
           lastSignInAt: '2023-01-01T00:00:00Z',
           externalId: null,
-        },
+          locale: null,
+          metadata: {},
+        } satisfies User,
         impersonator: {
           email: 'admin@example.com',
           reason: 'testing',
@@ -389,7 +393,9 @@ describe('auth', () => {
           updatedAt: '2023-01-01T00:00:00Z',
           lastSignInAt: '2023-01-01T00:00:00Z',
           externalId: null,
-        },
+          locale: null,
+          metadata: {},
+        } satisfies User,
         headers: {},
       };
 
@@ -456,7 +462,9 @@ describe('auth', () => {
           updatedAt: '2023-01-01T00:00:00Z',
           lastSignInAt: '2023-01-01T00:00:00Z',
           externalId: null,
-        },
+          locale: null,
+          metadata: {},
+        } satisfies User,
         refreshToken: 'refresh-token',
         headers: {},
         accessToken: '', // Empty string to meet type requirement but it will be treated as falsy

@@ -8,6 +8,7 @@ import {
 import { configureSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit } from './utils.js';
 import { DataWithResponseInit } from './interfaces.js';
+import type { LoaderFunctionArgs } from 'react-router';
 
 // Mock dependencies
 const fakeWorkosInstance = {
@@ -51,7 +52,7 @@ describe('authLoader', () => {
         request: new Request('https://example.com'),
         params: {},
         context: {},
-      });
+      } as LoaderFunctionArgs);
 
       expect(response).toBeUndefined();
     });
@@ -59,7 +60,11 @@ describe('authLoader', () => {
     it('should handle authentication failure', async () => {
       authenticateWithCode.mockRejectedValue(new Error('Auth failed'));
       request = createRequestWithSearchParams(request, { code: 'invalid-code' });
-      const response = (await loader({ request, params: {}, context: {} })) as DataWithResponseInit<unknown>;
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
       expect(isDataWithResponseInit(response)).toBeTruthy();
 
       expect(response?.init?.status).toBe(500);
@@ -68,7 +73,11 @@ describe('authLoader', () => {
     it('should handle authentication failure with string error', async () => {
       authenticateWithCode.mockRejectedValue('Auth failed');
       request = createRequestWithSearchParams(request, { code: 'invalid-code' });
-      const response = (await loader({ request, params: {}, context: {} })) as DataWithResponseInit<unknown>;
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
       expect(isDataWithResponseInit(response)).toBeTruthy();
 
       expect(response?.init?.status).toBe(500);
@@ -80,7 +89,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     expect(workos.userManagement.authenticateWithCode).toHaveBeenCalledWith({
       clientId: process.env.WORKOS_CLIENT_ID,
@@ -98,7 +107,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     assertIsResponse(response);
     expect(response.status).toBe(302);
@@ -111,7 +120,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     assertIsResponse(response);
     expect(response.status).toBe(302);
@@ -125,7 +134,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     expect(onSuccess).toHaveBeenCalled();
   });
@@ -137,7 +146,7 @@ describe('authLoader', () => {
       }),
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
     assertIsResponse(response);
     expect(response.status).toBe(302);
     expect(response.headers.get('Location')).toBe('http://example.com/profile');
@@ -159,7 +168,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ impersonator: { email: 'test@example.com' } }));
   });
@@ -183,7 +192,7 @@ describe('authLoader', () => {
       request,
       params: {},
       context: {},
-    });
+    } as LoaderFunctionArgs);
 
     expect(onSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -207,7 +216,7 @@ describe('authLoader', () => {
         request,
         params: {},
         context: {},
-      });
+      } as LoaderFunctionArgs);
 
       // Should be a redirect response
       assertIsResponse(response);
@@ -242,7 +251,7 @@ describe('authLoader', () => {
         request,
         params: {},
         context: {},
-      });
+      } as LoaderFunctionArgs);
 
       // Should be a redirect response
       assertIsResponse(response);

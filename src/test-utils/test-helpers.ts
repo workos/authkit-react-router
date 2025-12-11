@@ -1,5 +1,7 @@
 /* istanbul ignore file */
 
+import type { User } from '@workos-inc/node';
+
 type SearchParamsModifier = Record<string, string> | ((params: URLSearchParams) => void);
 
 /**
@@ -54,7 +56,9 @@ export function createAuthWithCodeResponse(overrides: Record<string, unknown> = 
       updatedAt: '2024-01-01T00:00:00Z',
       lastSignInAt: '2024-01-01T00:00:00Z',
       externalId: null,
-    },
+      locale: null,
+      metadata: {},
+    } satisfies User,
     ...overrides,
   };
 }
