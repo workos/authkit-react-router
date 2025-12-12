@@ -16,7 +16,7 @@ import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { getConfig } from './config.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit, isJsonResponse, isRedirect, isResponse } from './utils.js';
-import type { AuthenticationResponse, Impersonator, User } from '@workos-inc/node';
+import type { AuthenticationResponse } from '@workos-inc/node';
 
 // must be a type since this is a subtype of response
 // interfaces must conform to the types they extend
@@ -31,21 +31,6 @@ export class SessionRefreshError extends Error {
   }
 }
 
-interface RefreshedSession {
-  user: User;
-  sessionId: string;
-  accessToken: string;
-  organizationId: string | undefined;
-  role: string | undefined;
-  roles: string[] | undefined;
-  permissions: string[] | undefined;
-  entitlements: string[] | undefined;
-  featureFlags: string[] | undefined;
-  impersonator: Impersonator | null;
-  sealedSession: unknown;
-  headers: Record<string, string>;
-}
-
 /**
  * This function is used to refresh the session by using the refresh token.
  * It will authenticate the user with the refresh token and return a new session object.
@@ -53,10 +38,7 @@ interface RefreshedSession {
  * @param options - Optional configuration options
  * @returns A promise that resolves to the new session object
  */
-export async function refreshSession(
-  request: Request,
-  options: { organizationId?: string } = {},
-): Promise<RefreshedSession> {
+export async function refreshSession(request: Request, options: { organizationId?: string } = {}) {
   const { organizationId } = options;
   const { getSession } = await getSessionStorage();
   const cookie = request.headers.get('Cookie');
