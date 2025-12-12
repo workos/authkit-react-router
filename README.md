@@ -1,6 +1,6 @@
 # AuthKit React Router Library
 
->[!IMPORTANT]
+> [!IMPORTANT]
 > This is an early-stage port of [authkit-remix](https://github.com/workos/authkit-remix) to support React Router. The features focus on framework mode (e.g. Remix), with more planned support for library mode and more features.
 
 The AuthKit library for React Router 7+ provides convenient helpers for authentication and session management using WorkOS & AuthKit with React Router. You can find this library in action in the [react-router-authkit-example](https://github.com/workos/react-router-authkit-example) repo.
@@ -25,13 +25,13 @@ AuthKit for React Router offers a flexible configuration system that allows you 
 
 ### 1. Environment Variables
 
-  The simplest way is to set environment variables in your `.env.local` file:
+The simplest way is to set environment variables in your `.env.local` file:
 
-  ```bash
-  WORKOS_CLIENT_ID="client_..." # retrieved from the WorkOS dashboard
-  WORKOS_API_KEY="sk_test_..." # retrieved from the WorkOS dashboard
-  WORKOS_REDIRECT_URI="http://localhost:5173/callback" # configured in the WorkOS dashboard
-  WORKOS_COOKIE_PASSWORD="<your password>" # generate a secure password here
+```bash
+WORKOS_CLIENT_ID="client_..." # retrieved from the WorkOS dashboard
+WORKOS_API_KEY="sk_test_..." # retrieved from the WorkOS dashboard
+WORKOS_REDIRECT_URI="http://localhost:5173/callback" # configured in the WorkOS dashboard
+WORKOS_COOKIE_PASSWORD="<your password>" # generate a secure password here
 ```
 
 ### 2. Programmatic Configuration
@@ -59,17 +59,14 @@ For non-standard environments (like Deno or Edge functions), you can provide a c
 
 > [!Warning]
 >
->While this library includes support for custom environment sources that could theoretically work in non-Node.js runtimes like Deno or Edge functions, this functionality has not been extensively tested (yet). If you're planning to use AuthKit in these environments, you may encounter unexpected issues. We welcome feedback and contributions from users who test in these environments.
+> While this library includes support for custom environment sources that could theoretically work in non-Node.js runtimes like Deno or Edge functions, this functionality has not been extensively tested (yet). If you're planning to use AuthKit in these environments, you may encounter unexpected issues. We welcome feedback and contributions from users who test in these environments.
 
 ```typescript
 import { configure } from '@workos-inc/authkit-react-router';
 
-configure(key => Deno.env.get(key));
+configure((key) => Deno.env.get(key));
 // Or combine with explicit values
-configure(
-  { clientId: 'client_1234567890' },
-  key => Deno.env.get(key)
-);
+configure({ clientId: 'client_1234567890' }, (key) => Deno.env.get(key));
 ```
 
 ### Configuration Priority
@@ -82,25 +79,25 @@ When retrieving configuration values, AuthKit follows this priority order:
 
 ### Available Configuration Options
 
->[!NOTE]
+> [!NOTE]
 >
->To print out the entire config, a `getFullConfig` function is provided for debugging purposes.
+> To print out the entire config, a `getFullConfig` function is provided for debugging purposes.
 
-|  Option |  Environment Variable |  Default |  Required |  Description |  
-| ---- | ---- | ---- | ---- | ----  |
-|  `clientId` |  `WORKOS_CLIENT_ID` |  - |  Yes |  Your WorkOS Client ID |  
-|  `apiKey` |  `WORKOS_API_KEY` |  - |  Yes |  Your WorkOS API Key |  
-|  `redirectUri` |  `WORKOS_REDIRECT_URI` |  - |  Yes |  The callback URL configured in WorkOS |  
-|  `cookiePassword` |  `WORKOS_COOKIE_PASSWORD` |  - |  Yes |  Password for cookie encryption (min 32 chars) |  
-|  `cookieName` |  `WORKOS_COOKIE_NAME` |  `wos-session` |  No |  Name of the session cookie |  
-|  `apiHttps` |  `WORKOS_API_HTTPS` |  `true` |  No |  Whether to use HTTPS for API calls |  
-|  `cookieMaxAge` |  `WORKOS_COOKIE_MAX_AGE` |  `34560000` (400 days) |  No |  Maximum age of cookie in seconds |  
-|  `apiHostname` |  `WORKOS_API_HOSTNAME` |  `api.workos.com` |  No |  WorkOS API hostname |  
-|  `apiPort` |  `WORKOS_API_PORT` |  - |  No |  Port to use for API calls | 
+| Option           | Environment Variable     | Default               | Required | Description                                   |
+| ---------------- | ------------------------ | --------------------- | -------- | --------------------------------------------- |
+| `clientId`       | `WORKOS_CLIENT_ID`       | -                     | Yes      | Your WorkOS Client ID                         |
+| `apiKey`         | `WORKOS_API_KEY`         | -                     | Yes      | Your WorkOS API Key                           |
+| `redirectUri`    | `WORKOS_REDIRECT_URI`    | -                     | Yes      | The callback URL configured in WorkOS         |
+| `cookiePassword` | `WORKOS_COOKIE_PASSWORD` | -                     | Yes      | Password for cookie encryption (min 32 chars) |
+| `cookieName`     | `WORKOS_COOKIE_NAME`     | `wos-session`         | No       | Name of the session cookie                    |
+| `apiHttps`       | `WORKOS_API_HTTPS`       | `true`                | No       | Whether to use HTTPS for API calls            |
+| `cookieMaxAge`   | `WORKOS_COOKIE_MAX_AGE`  | `34560000` (400 days) | No       | Maximum age of cookie in seconds              |
+| `apiHostname`    | `WORKOS_API_HOSTNAME`    | `api.workos.com`      | No       | WorkOS API hostname                           |
+| `apiPort`        | `WORKOS_API_PORT`        | -                     | No       | Port to use for API calls                     |
 
->[!NOTE]
+> [!NOTE]
 >
->The `cookiePassword` must be at least 32 characters long for security reasons.
+> The `cookiePassword` must be at least 32 characters long for security reasons.
 
 ## Setup
 
@@ -161,14 +158,7 @@ export function App() {
 For pages where you want to display a signed-in and signed-out view, use `authkitLoader` to retrieve the user profile from WorkOS. You can pass in additional data by providing a loader function directly to `authkitLoader`.
 
 ```tsx
-import {
-  type ActionFunctionArgs,
-  type LoaderFunctionArgs,
-  data,
-  Form,
-  Link,
-  useLoaderData
-} from 'react-router';
+import { type ActionFunctionArgs, type LoaderFunctionArgs, data, Form, Link, useLoaderData } from 'react-router';
 import { getSignInUrl, getSignUpUrl, signOut, authkitLoader } from '@workos-inc/authkit-react-router';
 
 export const loader = (args: LoaderFunctionArgs) =>
@@ -245,7 +235,7 @@ export const loader = (args: LoaderFunctionArgs) =>
 
     // Explicitly call the function to get the access token
     const accessToken = getAccessToken();
-    
+
     const serviceData = await fetch('/api/path', {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -261,26 +251,32 @@ export const loader = (args: LoaderFunctionArgs) =>
 #### Security Considerations
 
 By default, access tokens are not included in the data sent to React components. This helps prevent unintentional token exposure in:
+
 - Browser developer tools
-- HTML source code  
+- HTML source code
 - Client-side logs or error reporting
 
 If you need to expose the access token to client-side code, you can explicitly return it from your loader:
 
 ```tsx
 export const loader = (args: LoaderFunctionArgs) =>
-  authkitLoader(args, async ({ auth, getAccessToken }) => {
-    const accessToken = getAccessToken();
-    
-    return {
-      // Only expose to client if absolutely necessary
-      accessToken,
-      userData: await fetchUserData(accessToken)
-    };
-  }, { ensureSignedIn: true });
+  authkitLoader(
+    args,
+    async ({ auth, getAccessToken }) => {
+      const accessToken = getAccessToken();
+
+      return {
+        // Only expose to client if absolutely necessary
+        accessToken,
+        userData: await fetchUserData(accessToken),
+      };
+    },
+    { ensureSignedIn: true },
+  );
 ```
 
 **Note:** Only expose access tokens to the client when necessary for your use case (e.g., making direct API calls from the browser). Consider alternatives like:
+
 - Making API calls server-side in your loaders
 - Creating proxy endpoints in your application
 - Using separate client-specific tokens with limited scope
@@ -291,15 +287,19 @@ When using the `ensureSignedIn` option, you can be confident that `getAccessToke
 
 ```tsx
 export const loader = (args: LoaderFunctionArgs) =>
-  authkitLoader(args, async ({ auth, getAccessToken }) => {
-    // With ensureSignedIn: true, the user is guaranteed to be authenticated
-    const accessToken = getAccessToken();
-    
-    // Use the token for your API calls
-    const data = await fetchProtectedData(accessToken);
-    
-    return { data };
-  }, { ensureSignedIn: true });
+  authkitLoader(
+    args,
+    async ({ auth, getAccessToken }) => {
+      // With ensureSignedIn: true, the user is guaranteed to be authenticated
+      const accessToken = getAccessToken();
+
+      // Use the token for your API calls
+      const data = await fetchProtectedData(accessToken);
+
+      return { data };
+    },
+    { ensureSignedIn: true },
+  );
 ```
 
 ### Using withAuth for low-level access
@@ -307,7 +307,7 @@ export const loader = (args: LoaderFunctionArgs) =>
 For advanced use cases, the `withAuth` function provides direct access to authentication data, including the access token. Unlike `authkitLoader`, this function:
 
 - Does not handle automatic token refresh
-- Does not manage cookies or session updates  
+- Does not manage cookies or session updates
 - Returns the access token directly as a property
 - Requires manual redirect handling for unauthenticated users
 
@@ -317,20 +317,20 @@ import { redirect, type LoaderFunctionArgs } from 'react-router';
 
 export const loader = async (args: LoaderFunctionArgs) => {
   const auth = await withAuth(args);
-  
+
   if (!auth.user) {
     // Manual redirect - withAuth doesn't handle this automatically
     throw redirect('/sign-in');
   }
-  
+
   // Access token is directly available as a property
   const { accessToken, user, sessionId } = auth;
-  
+
   // Use the token for server-side operations
   const apiData = await fetch('https://api.example.com/data', {
-    headers: { Authorization: `Bearer ${accessToken}` }
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
-  
+
   // Be careful what you return - accessToken will be exposed if included
   return {
     user,
@@ -345,6 +345,57 @@ export const loader = async (args: LoaderFunctionArgs) => {
 - Use `authkitLoader` for most cases - it handles token refresh, cookies, and provides safer defaults
 - Use `withAuth` when you need more control or are building custom authentication flows
 - `withAuth` is useful for API routes or middleware where you don't need the full loader functionality
+
+### Advanced: Direct access to the WorkOS client
+
+For advanced use cases or functionality not covered by the helper methods, you can access the underlying WorkOS client directly:
+
+```ts
+import { getWorkOS } from '@workos-inc/authkit-react-router';
+
+// Get the configured WorkOS client instance
+const workos = getWorkOS();
+
+// Use any WorkOS SDK method
+const organizations = await workos.organizations.listOrganizations({
+  limit: 10,
+});
+```
+
+### Advanced: Custom authentication flows
+
+While the standard authentication flow handles session management automatically, some use cases require manually creating and storing a session. This is useful for custom authentication flows like email verification or token exchange.
+
+For these scenarios, you can use the `saveSession` function:
+
+```ts
+import { redirect } from 'react-router';
+import { getWorkOS, saveSession } from '@workos-inc/authkit-react-router';
+
+// Example: Email verification flow
+async function handleEmailVerification(request: Request) {
+  const { code } = await request.json();
+
+  // Authenticate with the WorkOS API directly
+  const authResponse = await getWorkOS().userManagement.authenticateWithEmailVerification({
+    clientId: process.env.WORKOS_CLIENT_ID,
+    code,
+  });
+
+  // Save the session data to a cookie
+  await saveSession(
+    {
+      accessToken: authResponse.accessToken,
+      refreshToken: authResponse.refreshToken,
+      user: authResponse.user,
+      impersonator: authResponse.impersonator,
+    },
+    request,
+  );
+
+  return redirect('/dashboard');
+}
+```
 
 ### Debugging
 
@@ -392,32 +443,33 @@ By default, AuthKit for React Router uses cookie-based session storage with thes
 You can provide your own session storage implementation to both `authkitLoader` and `authLoader`:
 
 ```typescript
-import { createMemorySessionStorage } from "@react-router/node";
-import { authkitLoader, authLoader } from "@workos-inc/authkit-react-router";
+import { createMemorySessionStorage } from '@react-router/node';
+import { authkitLoader, authLoader } from '@workos-inc/authkit-react-router';
 
 // Create memory-based session storage
 const memoryStorage = createMemorySessionStorage({
   cookie: {
-    name: "auth-session",
-    secrets: ["test-secret"],
-    sameSite: "lax",
-    path: "/",
+    name: 'auth-session',
+    secrets: ['test-secret'],
+    sameSite: 'lax',
+    path: '/',
     httpOnly: true,
     secure: false, // Use false for testing
-    maxAge: 60 * 60 * 24 // 1 day
-  }
+    maxAge: 60 * 60 * 24, // 1 day
+  },
 });
 
 // In your root loader
-export const loader = (args) => authkitLoader(args, {
-  storage: memoryStorage,
-  cookie: { name: "auth-session" }
-});
+export const loader = (args) =>
+  authkitLoader(args, {
+    storage: memoryStorage,
+    cookie: { name: 'auth-session' },
+  });
 
 // In your callback route
 export const loader = authLoader({
   storage: memoryStorage,
-  cookie: { name: "auth-session" }
+  cookie: { name: 'auth-session' },
 });
 ```
 
@@ -426,19 +478,22 @@ For code reuse and consistency, consider using a shared function:
 ```typescript
 // app/lib/session.ts
 export function getAuthStorage() {
-  const storage = createCookieSessionStorage({/* config */});
-  return { storage, cookie: { name: "my-custom-session" } };
+  const storage = createCookieSessionStorage({
+    /* config */
+  });
+  return { storage, cookie: { name: 'my-custom-session' } };
 }
 
 // Then in your routes
-import { getAuthStorage } from "~/lib/session";
-export const loader = (args) => authkitLoader(args, {
-  ...getAuthStorage(),
-  // Other options...
-});
+import { getAuthStorage } from '~/lib/session';
+export const loader = (args) =>
+  authkitLoader(args, {
+    ...getAuthStorage(),
+    // Other options...
+  });
 ```
 
 > [!NOTE]
->When deploying to serverless environments like AWS Lambda, ensure you pass the same storage configuration to both your main routes and the callback route to handle cold starts properly.
+> When deploying to serverless environments like AWS Lambda, ensure you pass the same storage configuration to both your main routes and the callback route to handle cold starts properly.
 
 AuthKit works with any session storage that implements React Router's `SessionStorage` interface, including Redis-based or database-backed implementations.
