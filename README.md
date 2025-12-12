@@ -161,7 +161,7 @@ export function App() {
 For pages where you want to display a signed-in and signed-out view, use `authkitLoader` to retrieve the user profile from WorkOS. You can pass in additional data by providing a loader function directly to `authkitLoader`.
 
 ```tsx
-import type {
+import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
   data,
