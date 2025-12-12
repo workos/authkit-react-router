@@ -16,6 +16,7 @@ import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { getConfig } from './config.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit, isJsonResponse, isRedirect, isResponse } from './utils.js';
+import type { AuthenticationResponse } from '@workos-inc/node';
 
 // must be a type since this is a subtype of response
 // interfaces must conform to the types they extend
@@ -37,37 +38,24 @@ export class SessionRefreshError extends Error {
  * @param options - Optional configuration options
  * @returns A promise that resolves to the new session object
  */
-export async function refreshSession(request: Request, { organizationId }: { organizationId?: string } = {}) {
-  const { getSession, commitSession } = await getSessionStorage();
-  const session = await getSessionFromCookie(request.headers.get('Cookie') as string);
-
+export async function refreshSession(request: Request, options: { organizationId?: string } = {}) {
+  const { organizationId } = options;
+  const { getSession } = await getSessionStorage();
+  const cookie = request.headers.get('Cookie');
+  const session = cookie ? await getSessionFromCookie(cookie) : null;
   if (!session) {
     throw redirect(await getAuthorizationUrl());
   }
 
   try {
-    const { accessToken, refreshToken, user, impersonator } =
-      await getWorkOS().userManagement.authenticateWithRefreshToken({
-        clientId: getConfig('clientId'),
-        refreshToken: session.refreshToken,
-        organizationId,
-      });
-
-    const newSession = {
-      accessToken,
-      refreshToken,
-      user,
-      impersonator,
-      headers: {} as Record<string, string>,
-    };
-
-    const cookieSession = await getSession(request.headers.get('Cookie'));
-    cookieSession.set('jwt', await encryptSession(newSession));
-    const cookie = await commitSession(cookieSession);
-
-    newSession.headers = {
-      'Set-Cookie': cookie,
-    };
+    const refreshResult = await getWorkOS().userManagement.authenticateWithRefreshToken({
+      clientId: getConfig('clientId'),
+      refreshToken: session.refreshToken,
+      organizationId,
+    });
+    const { headers } = await saveSession(refreshResult, request);
+    const cookieSession = await getSession(cookie);
+    const { accessToken, user, impersonator } = refreshResult;
 
     const {
       sessionId,
@@ -91,7 +79,7 @@ export async function refreshSession(request: Request, { organizationId }: { org
       featureFlags,
       impersonator: impersonator ?? null,
       sealedSession: cookieSession.get('jwt'),
-      headers: newSession.headers,
+      headers,
     };
   } catch (error) {
     throw new Error(`Failed to refresh session: ${error instanceof Error ? error.message : String(error)}`, {
@@ -100,7 +88,54 @@ export async function refreshSession(request: Request, { organizationId }: { org
   }
 }
 
-async function updateSession(request: Request, debug: boolean) {
+/**
+ * Saves a WorkOS session to a cookie for use with AuthKit.
+ *
+ * This function is intended for advanced use cases where you need to manually
+ * manage sessions, such as custom authentication flows (email verification,
+ * etc.) that don't use the standard AuthKit authentication flow.
+ *
+ * @param sessionOrResponse The WorkOS session or AuthenticationResponse
+ * containing access token, refresh token, and user information.
+ * @param request A Request object, used to determine cookie settings.
+ *
+ * @example
+ * import { saveSession } from '@workos-inc/authkit-react-router';
+ *
+ * async function handleEmailVerification(req: Request) {
+ *   const { code } = await req.json();
+ *   const authResponse = await workos.userManagement.authenticateWithEmailVerification({
+ *     clientId: process.env.WORKOS_CLIENT_ID,
+ *     code,
+ *   });
+ *
+ *   await saveSession(authResponse, req);
+ * }
+ */
+export async function saveSession(
+  sessionOrResponse: Session | AuthenticationResponse,
+  request: Request,
+): Promise<Session> {
+  const { getSession, commitSession } = await getSessionStorage();
+  const { accessToken, refreshToken, user, impersonator } = sessionOrResponse;
+  const newSession: Session = {
+    accessToken,
+    refreshToken,
+    user,
+    impersonator,
+    headers: {},
+  };
+  const cookieSession = await getSession(request.headers.get('Cookie'));
+  cookieSession.set('jwt', await encryptSession(newSession));
+  const cookie = await commitSession(cookieSession);
+  newSession.headers = {
+    'Set-Cookie': cookie,
+  };
+
+  return newSession;
+}
+
+async function updateSession(request: Request, debug: boolean): Promise<Session | null> {
   const session = await getSessionFromCookie(request.headers.get('Cookie') as string);
   const { commitSession, getSession } = await getSessionStorage();
 
@@ -158,7 +193,7 @@ async function updateSession(request: Request, debug: boolean) {
   }
 }
 
-export async function encryptSession(session: Session) {
+export async function encryptSession(session: Session | AuthenticationResponse) {
   return sealData(session, {
     password: getConfig('cookiePassword'),
     ttl: 0,
