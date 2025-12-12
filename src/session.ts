@@ -7,6 +7,7 @@ import type {
   DataWithResponseInit,
   Session,
   UnauthorizedData,
+  UnwrapData,
 } from './interfaces.js';
 import { getWorkOS } from './workos.js';
 
@@ -14,7 +15,7 @@ import { sealData, unsealData } from 'iron-session';
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { getConfig } from './config.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
-import { isJsonResponse, isRedirect, isResponse } from './utils.js';
+import { isDataWithResponseInit, isJsonResponse, isRedirect, isResponse } from './utils.js';
 
 // must be a type since this is a subtype of response
 // interfaces must conform to the types they extend
@@ -168,11 +169,17 @@ type LoaderValue<Data> = Response | TypedResponse<Data> | NonNullable<Data> | nu
 type LoaderReturnValue<Data> = Promise<LoaderValue<Data>> | LoaderValue<Data>;
 
 type AuthLoader<Data> = (
-  args: LoaderFunctionArgs & { auth: AuthorizedData | UnauthorizedData; getAccessToken: () => string | null },
+  args: LoaderFunctionArgs & {
+    auth: AuthorizedData | UnauthorizedData;
+    getAccessToken: () => string | null;
+  },
 ) => LoaderReturnValue<Data>;
 
 type AuthorizedAuthLoader<Data> = (
-  args: LoaderFunctionArgs & { auth: AuthorizedData; getAccessToken: () => string },
+  args: LoaderFunctionArgs & {
+    auth: AuthorizedData;
+    getAccessToken: () => string;
+  },
 ) => LoaderReturnValue<Data>;
 
 /**
@@ -180,9 +187,6 @@ type AuthorizedAuthLoader<Data> = (
  * automatically, making it easier to build authenticated routes.
  *
  * Creates an authentication-aware loader function for React Router.
- *
- * This loader handles authentication state, session management, and access token refreshing
- * automatically, making it easier to build authenticated routes.
  *
  * @overload
  * Basic usage with enforced authentication that redirects unauthenticated users to sign in.
@@ -252,7 +256,7 @@ export async function authkitLoader<Data = unknown>(
   loaderArgs: LoaderFunctionArgs,
   loader: AuthorizedAuthLoader<Data>,
   options: AuthKitLoaderOptions & { ensureSignedIn: true },
-): Promise<DataWithResponseInit<Data & AuthorizedData>>;
+): Promise<DataWithResponseInit<UnwrapData<Data> & AuthorizedData>>;
 
 /**
  * This loader handles authentication state, session management, and access token refreshing
@@ -287,7 +291,7 @@ export async function authkitLoader<Data = unknown>(
   loaderArgs: LoaderFunctionArgs,
   loader: AuthLoader<Data>,
   options?: AuthKitLoaderOptions,
-): Promise<DataWithResponseInit<Data & (AuthorizedData | UnauthorizedData)>>;
+): Promise<DataWithResponseInit<UnwrapData<Data> & (AuthorizedData | UnauthorizedData)>>;
 
 export async function authkitLoader<Data = unknown>(
   loaderArgs: LoaderFunctionArgs,
@@ -305,7 +309,10 @@ export async function authkitLoader<Data = unknown>(
   } = typeof loaderOrOptions === 'object' ? loaderOrOptions : options;
 
   const cookieName = cookie?.name ?? getConfig('cookieName');
-  const { getSession, destroySession } = await configureSessionStorage({ storage, cookieName });
+  const { getSession, destroySession } = await configureSessionStorage({
+    storage,
+    cookieName,
+  });
 
   const { request } = loaderArgs;
 
@@ -443,7 +450,11 @@ async function handleAuthLoader(
   } else {
     // Unauthorized case
     const getAccessToken = () => null;
-    loaderResult = await (loader as AuthLoader<unknown>)({ ...args, auth, getAccessToken });
+    loaderResult = await (loader as AuthLoader<unknown>)({
+      ...args,
+      auth,
+      getAccessToken,
+    });
   }
 
   if (isResponse(loaderResult)) {
@@ -467,9 +478,20 @@ async function handleAuthLoader(
     return data({ ...responseData, ...auth }, newResponse);
   }
 
-  // If the loader returns a non-Response, assume it's a data object
-  // istanbul ignore next
-  return data({ ...loaderResult, ...auth }, session ? { headers: { ...session.headers } } : undefined);
+  const actualData = isDataWithResponseInit(loaderResult) ? loaderResult.data : loaderResult;
+
+  const mergedHeaders = isDataWithResponseInit(loaderResult) ? new Headers(loaderResult.init?.headers) : new Headers();
+
+  if (session?.headers) {
+    Object.entries(session.headers).forEach(([key, value]) => {
+      mergedHeaders.set(key, value);
+    });
+  }
+
+  const mergedData = actualData && typeof actualData === 'object' ? { ...actualData, ...auth } : { ...auth };
+
+  // Always pass headers (empty headers object is valid)
+  return data(mergedData, { headers: mergedHeaders });
 }
 
 export async function terminateSession(request: Request, { returnTo }: { returnTo?: string } = {}) {

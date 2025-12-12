@@ -3,6 +3,8 @@ import type { OauthTokens, User } from '@workos-inc/node';
 
 export type DataWithResponseInit<T> = ReturnType<typeof data<T>>;
 
+export type UnwrapData<T> = T extends DataWithResponseInit<infer U> ? U : T;
+
 export type HandleAuthOptions = {
   returnPathname?: string;
   onSuccess?: (data: AuthLoaderSuccessData) => void | Promise<void>;
