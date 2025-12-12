@@ -7,7 +7,7 @@ import {
   getSessionStorage as getSessionStorageMock,
 } from './sessionStorage.js';
 import { Session } from './interfaces.js';
-import { authkitLoader, encryptSession, terminateSession, refreshSession } from './session.js';
+import { authkitLoader, encryptSession, terminateSession, refreshSession, saveSession } from './session.js';
 import { assertIsResponse } from './test-utils/test-helpers.js';
 import { getWorkOS } from './workos.js';
 import { getConfig } from './config.js';
@@ -816,6 +816,98 @@ describe('session', () => {
       await expect(refreshSession(createMockRequest())).rejects.toThrow(
         'Failed to refresh session: Invalid refresh token',
       );
+    });
+  });
+
+  describe('saveSession', () => {
+    const sessionData = {
+      accessToken: 'new.valid.token',
+      refreshToken: 'new.refresh.token',
+      user: {
+        object: 'user',
+        id: 'user-1',
+        email: 'test@example.com',
+        emailVerified: true,
+        profilePictureUrl: null,
+        firstName: 'Test',
+        lastName: 'User',
+        lastSignInAt: '2021-01-01T00:00:00Z',
+        createdAt: '2021-01-01T00:00:00Z',
+        updatedAt: '2021-01-01T00:00:00Z',
+        externalId: null,
+        locale: null,
+        metadata: {},
+      } satisfies User,
+      impersonator: undefined,
+      headers: {},
+    } satisfies Session;
+
+    const createMockRequest = (cookie = 'test-cookie', url = 'http://example.com./some-path') =>
+      new Request(url, {
+        headers: new Headers({
+          Cookie: cookie,
+        }),
+      });
+
+    let getSession: jest.Mock;
+    let destroySession: jest.Mock;
+    let commitSession: jest.Mock;
+    let mockSession: ReactRouterSession;
+
+    beforeEach(() => {
+      getSession = jest.fn();
+      destroySession = jest.fn().mockResolvedValue('destroyed-session-cookie');
+      commitSession = jest.fn().mockResolvedValue('new-session-cookie');
+
+      mockSession = createMockSession({
+        has: jest.fn().mockReturnValue(true),
+        get: jest.fn().mockReturnValue('encrypted-jwt'),
+        set: jest.fn(),
+      });
+
+      getSessionStorage.mockResolvedValue({
+        cookieName: 'wos-cookie',
+        getSession,
+        destroySession,
+        commitSession,
+      });
+
+      getSession.mockResolvedValue(mockSession);
+
+      const validSessionData = {
+        accessToken: 'valid.token',
+        refreshToken: 'refresh.token',
+        user: {
+          id: 'user-1',
+          email: 'test@example.com',
+          firstName: 'Test',
+          lastName: 'User',
+          object: 'user',
+        },
+        impersonator: null,
+      };
+      unsealData.mockResolvedValue(validSessionData);
+      sealData.mockResolvedValue('new-encrypted-jwt');
+
+      authenticateWithRefreshToken.mockResolvedValue(sessionData);
+
+      // Mock JWT decoding
+      (jose.decodeJwt as jest.Mock).mockReturnValue({
+        sid: 'new-session-id',
+        org_id: 'org-123',
+        role: 'user',
+        roles: ['user'],
+        permissions: ['read'],
+        entitlements: ['basic'],
+        feature_flags: ['flag-1'],
+      });
+    });
+
+    it('should save the session to the cookie', async () => {
+      await saveSession(sessionData, createMockRequest());
+      expect(getSessionStorage).toHaveBeenCalled();
+      expect(commitSession).toHaveBeenCalledWith(mockSession);
+      expect(mockSession.set).toHaveBeenCalledWith('jwt', 'new-encrypted-jwt');
     });
   });
 });
