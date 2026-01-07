@@ -1,17 +1,38 @@
-import { LoaderFunctionArgs, data, redirect } from 'react-router';
-import { getAuthorizationUrl } from './get-authorization-url.js';
-import { getClaimsFromAccessToken, getSessionFromCookie, refreshSession, terminateSession } from './session.js';
-import { NoUserInfo, UserInfo } from './interfaces.js';
+import { data, redirect, type LoaderFunctionArgs } from 'react-router';
+import { getAuthkit } from './authkit.js';
+import { refreshSession, terminateSession } from './session.js';
+import type { DataWithResponseInit, NoUserInfo, UserInfo } from './interfaces.js';
 import { getConfig } from './config.js';
 
+interface SwitchOrgSuccess {
+  success: true;
+  auth: Awaited<ReturnType<typeof refreshSession>>;
+}
+
+interface SwitchOrgError {
+  success: false;
+  error: string;
+}
+
+/**
+ * Get the sign-in URL for AuthKit.
+ */
 export async function getSignInUrl(returnPathname?: string) {
-  return getAuthorizationUrl({ returnPathname, screenHint: 'sign-in' });
+  const authkit = getAuthkit();
+  return authkit.getSignInUrl({ returnPathname });
 }
 
+/**
+ * Get the sign-up URL for AuthKit.
+ */
 export async function getSignUpUrl(returnPathname?: string) {
-  return getAuthorizationUrl({ returnPathname, screenHint: 'sign-up' });
+  const authkit = getAuthkit();
+  return authkit.getSignUpUrl({ returnPathname });
 }
 
+/**
+ * Sign out the current user.
+ */
 export async function signOut(request: Request, options?: { returnTo?: string }) {
   return await terminateSession(request, options);
 }
@@ -22,11 +43,10 @@ export async function signOut(request: Request, options?: { returnTo?: string })
  * If the user is not authenticated, it will return an object with user set to null.
  * IMPORTANT: This authkitLoader must be used in a parent/root loader
  * to handle session refresh and cookie management.
- * @param args - The loader's arguments.
- * @returns An object containing user information
  */
 export async function withAuth(args: LoaderFunctionArgs): Promise<UserInfo | NoUserInfo> {
   const { request } = args;
+  const authkit = getAuthkit();
   const cookieHeader = request.headers.get('Cookie') as string;
   const cookieName = getConfig('cookieName');
 
@@ -36,28 +56,21 @@ export async function withAuth(args: LoaderFunctionArgs): Promise<UserInfo | NoU
       `[AuthKit] No session cookie "${cookieName}" found. ` + `Make sure authkitLoader is used in a parent/root route.`,
     );
   }
-  const session = await getSessionFromCookie(cookieHeader);
 
-  if (!session?.accessToken) {
+  const result = await authkit.withAuth(request);
+
+  if (!result.auth.user) {
     return {
       user: null,
     };
   }
 
-  const {
-    sessionId,
-    organizationId,
-    permissions,
-    entitlements,
-    featureFlags,
-    role,
-    roles,
-    exp = 0,
-  } = getClaimsFromAccessToken(session.accessToken);
+  // Check if token is expired
+  const now = Date.now();
+  const claims = result.auth.claims;
+  const exp = claims?.exp ?? 0;
 
-  if (Date.now() >= exp * 1000) {
-    // The access token is expired. This function does not handle token refresh.
-    // Ensure that token refresh is implemented in the parent/root loader as documented.
+  if (now >= exp * 1000) {
     console.warn(
       '[AuthKit] Access token expired. Ensure authkitLoader is used in a parent/root route to handle automatic token refresh.',
     );
@@ -67,31 +80,27 @@ export async function withAuth(args: LoaderFunctionArgs): Promise<UserInfo | NoU
   }
 
   return {
-    user: session.user,
-    sessionId,
-    organizationId,
-    role,
-    roles,
-    permissions,
-    entitlements,
-    featureFlags,
-    impersonator: session.impersonator,
-    accessToken: session.accessToken,
+    user: result.auth.user,
+    sessionId: result.auth.sessionId,
+    organizationId: result.auth.organizationId,
+    role: result.auth.role,
+    roles: result.auth.roles,
+    permissions: result.auth.permissions,
+    entitlements: result.auth.entitlements,
+    featureFlags: result.auth.featureFlags,
+    impersonator: result.auth.impersonator,
+    accessToken: result.auth.accessToken,
   };
 }
 
 /**
  * Switches the current session to a different organization.
- * @param request - The incoming request object.
- * @param organizationId - The ID of the organization to switch to.
- * @param options - Optional parameters.
- * @returns A redirect response to the specified returnTo URL or a data response with the updated auth data.
  */
 export async function switchToOrganization(
   request: Request,
   organizationId: string,
   { returnTo }: { returnTo?: string } = {},
-) {
+): Promise<Response | DataWithResponseInit<SwitchOrgSuccess> | DataWithResponseInit<SwitchOrgError>> {
   try {
     const auth = await refreshSession(request, { organizationId });
 
@@ -99,7 +108,7 @@ export async function switchToOrganization(
     if (returnTo) {
       return redirect(returnTo, {
         headers: {
-          'Set-Cookie': auth.headers?.['Set-Cookie'] ?? '',
+          'Set-Cookie': auth.headers?.get('Set-Cookie') ?? '',
         },
       });
     }
@@ -109,7 +118,7 @@ export async function switchToOrganization(
       { success: true, auth },
       {
         headers: {
-          'Set-Cookie': auth.headers?.['Set-Cookie'] ?? '',
+          'Set-Cookie': auth.headers?.get('Set-Cookie') ?? '',
         },
       },
     );
@@ -121,7 +130,8 @@ export async function switchToOrganization(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const errorCause: any = error instanceof Error ? error.cause : null;
     if (errorCause?.error === 'sso_required' || errorCause?.error === 'mfa_enrollment') {
-      return redirect(await getAuthorizationUrl({ organizationId }));
+      const authkit = getAuthkit();
+      return redirect(await authkit.getAuthorizationUrl({ organizationId }));
     }
 
     return data(

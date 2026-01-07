@@ -3,19 +3,23 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["DOM", "ES2022", "DOM.Iterable"],
-    "jsx": "react",
-    "isolatedModules": true,
-    "module": "Node16",
-    "moduleResolution": "Node16",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "./dist",
+    "rootDir": "./src",
     "sourceMap": true,
     "declaration": true,
-    "outDir": "./dist",
+    "declarationMap": true,
     "importHelpers": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "alwaysStrict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "resolveJsonModule": true
   },
-  "exclude": ["**/*.spec.ts", "**/*.spec.tsx", "jest.config.ts", "jest.setup.ts", "/dist/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["**/*.spec.ts", "**/*.spec.tsx", "jest.config.ts", "jest.setup.ts", "dist/**/*"]
 }

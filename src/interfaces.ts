@@ -1,5 +1,17 @@
-import type { SessionStorage, SessionIdStorageStrategy, data, SessionData } from 'react-router';
-import type { OauthTokens, User } from '@workos-inc/node';
+import type { SessionData, data } from 'react-router';
+import type { OauthTokens } from '@workos-inc/node';
+
+// Re-export types from authkit-session
+export type {
+  Session as AuthkitSession,
+  AuthResult,
+  User,
+  Impersonator,
+  BaseTokenClaims as AccessToken,
+} from '@workos/authkit-session';
+
+// Import types for internal use
+import type { User, Impersonator, BaseTokenClaims } from '@workos/authkit-session';
 
 export type DataWithResponseInit<T> = ReturnType<typeof data<T>>;
 
@@ -8,16 +20,7 @@ export type UnwrapData<T> = T extends DataWithResponseInit<infer U> ? U : T;
 export type HandleAuthOptions = {
   returnPathname?: string;
   onSuccess?: (data: AuthLoaderSuccessData) => void | Promise<void>;
-} & (
-  | {
-      storage?: never;
-      cookie?: SessionIdStorageStrategy['cookie'];
-    }
-  | {
-      storage: SessionStorage;
-      cookie: SessionIdStorageStrategy['cookie'];
-    }
-);
+};
 
 export interface AuthLoaderSuccessData {
   accessToken: string;
@@ -41,27 +44,15 @@ export interface RefreshSuccessOptions {
   organizationId: string | null;
 }
 
-export interface Impersonator {
-  email: string;
-  reason: string | null;
-}
-
+/**
+ * Session type for React Router (includes headers for cookie management)
+ */
 export interface Session {
   accessToken: string;
   refreshToken: string;
   user: User;
   impersonator?: Impersonator;
   headers: Record<string, string>;
-}
-
-export interface AccessToken {
-  sid: string;
-  org_id?: string;
-  role?: string;
-  roles?: string[];
-  permissions?: string[];
-  entitlements?: string[];
-  feature_flags?: string[];
 }
 
 export interface UserInfo {
@@ -100,16 +91,7 @@ export type AuthKitLoaderOptions = {
   debug?: boolean;
   onSessionRefreshError?: (options: RefreshErrorOptions) => void | Response | Promise<void | Response>;
   onSessionRefreshSuccess?: (options: RefreshSuccessOptions) => void | Promise<void>;
-} & (
-  | {
-      storage?: never;
-      cookie?: SessionIdStorageStrategy['cookie'];
-    }
-  | {
-      storage: SessionStorage;
-      cookie: SessionIdStorageStrategy['cookie'];
-    }
-);
+};
 
 export interface AuthorizedData {
   user: User;
@@ -135,63 +117,5 @@ export interface UnauthorizedData {
   impersonator: null;
 }
 
-/**
- * AuthKit Configuration Options
- */
-export interface AuthKitConfig {
-  /**
-   * The WorkOS Client ID
-   * Equivalent to the WORKOS_CLIENT_ID environment variable
-   */
-  clientId: string;
-
-  /**
-   * The WorkOS API Key
-   * Equivalent to the WORKOS_API_KEY environment variable
-   */
-  apiKey: string;
-
-  /**
-   * The redirect URI for the authentication callback
-   * Equivalent to the WORKOS_REDIRECT_URI environment variable
-   */
-  redirectUri: string;
-
-  /**
-   * The password used to encrypt the session cookie
-   * Equivalent to the WORKOS_COOKIE_PASSWORD environment variable
-   * Must be at least 32 characters long
-   */
-  cookiePassword: string;
-
-  /**
-   * The hostname of the API to use
-   * Equivalent to the WORKOS_API_HOSTNAME environment variable
-   */
-  apiHostname?: string;
-
-  /**
-   * Whether to use HTTPS for API requests
-   * Equivalent to the WORKOS_API_HTTPS environment variable
-   */
-  apiHttps: boolean;
-
-  /**
-   * The port to use for the API
-   * Equivalent to the WORKOS_API_PORT environment variable
-   */
-  apiPort?: number;
-
-  /**
-   * The maximum age of the session cookie in seconds
-   * Equivalent to the WORKOS_COOKIE_MAX_AGE environment variable
-   */
-  cookieMaxAge: number;
-
-  /**
-   * The name of the session cookie
-   * Equivalent to the WORKOS_COOKIE_NAME environment variable
-   * Defaults to "wos-session"
-   */
-  cookieName: string;
-}
+// Re-export AuthKitConfig from authkit-session
+export type { AuthKitConfig } from '@workos/authkit-session';
