@@ -1,4 +1,4 @@
-import { DataWithResponseInit } from './interfaces.js';
+import type { DataWithResponseInit } from './interfaces.js';
 
 /**
  * Returns a function that can only be called once.

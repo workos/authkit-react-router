@@ -9,8 +9,8 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "engines": {
@@ -24,10 +24,11 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "prebuild": "npm run clean",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
+    "rebuild": "npm run clean && npm run build",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "prepack": "npm run rebuild",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run lint",
     "lint": "eslint \"src/**/*.ts*\"",
     "test": "NODE_OPTIONS=\"--experimental-vm-modules\" jest",
     "prettier": "prettier \"{src,__tests__}/**/*.{js,ts,tsx}\" --check",

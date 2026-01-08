@@ -45,7 +45,7 @@ export class ReactRouterCookieSessionStorage extends CookieSessionStorage<Reques
    * Extract encrypted session from Request cookies.
    * Uses React Router session storage to handle cookie signing/parsing.
    */
-  async getSession(request: Request): Promise<string | null> {
+  override async getSession(request: Request): Promise<string | null> {
     const cookieHeader = request.headers.get('Cookie');
     if (!cookieHeader) return null;
 
@@ -66,7 +66,7 @@ export class ReactRouterCookieSessionStorage extends CookieSessionStorage<Reques
    * Save encrypted session to Response.
    * Uses React Router session storage to handle cookie signing.
    */
-  async saveSession(
+  override async saveSession(
     response: Response | undefined,
     sessionData: string,
   ): Promise<{ response?: Response; headers?: HeadersBag }> {
@@ -89,7 +89,7 @@ export class ReactRouterCookieSessionStorage extends CookieSessionStorage<Reques
   /**
    * Clear the session cookie.
    */
-  async clearSession(
+  override async clearSession(
     response: Response,
   ): Promise<{ response?: Response; headers?: HeadersBag }> {
     const storage = this.getSessionStorage();
