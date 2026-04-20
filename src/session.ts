@@ -596,10 +596,13 @@ export async function getSessionFromCookie(cookie: string, session?: SessionData
 }
 
 let cachedJWKS: ReturnType<typeof createRemoteJWKSet> | undefined;
+let cachedJWKSUrl: string | undefined;
 
 function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
-  if (!cachedJWKS) {
-    cachedJWKS = createRemoteJWKSet(new URL(getWorkOS().userManagement.getJwksUrl(getConfig('clientId'))));
+  const jwksUrl = getWorkOS().userManagement.getJwksUrl(getConfig('clientId'));
+  if (!cachedJWKS || cachedJWKSUrl !== jwksUrl) {
+    cachedJWKS = createRemoteJWKSet(new URL(jwksUrl));
+    cachedJWKSUrl = jwksUrl;
   }
   return cachedJWKS;
 }

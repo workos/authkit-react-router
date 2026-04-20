@@ -868,11 +868,13 @@ describe('session', () => {
       });
     });
 
-    it('creates the JWKS instance only once across multiple verifyAccessToken calls', async () => {
+    it('reuses the cached JWKS instance across multiple verifyAccessToken calls', async () => {
       const createRemoteJWKSetMock = jose.createRemoteJWKSet as jest.Mock;
 
-      // Prime the module-scoped cache, then clear mock state so that any
-      // subsequent call to createRemoteJWKSet would show up in the count.
+      // Ensure the module-scoped cache is populated (it may already be from an
+      // earlier test in this file; either way this call guarantees it). After
+      // this point, any subsequent verifyAccessToken must NOT invoke
+      // createRemoteJWKSet again for the same JWKS URL.
       await authkitLoader(createLoaderArgs(new Request('http://example.com/a', { headers: { Cookie: 'cookie' } })));
       createRemoteJWKSetMock.mockClear();
 
@@ -882,6 +884,36 @@ describe('session', () => {
 
       expect(jwtVerify).toHaveBeenCalled();
       expect(createRemoteJWKSetMock).not.toHaveBeenCalled();
+    });
+
+    it('rebuilds the JWKS instance when the JWKS URL changes', async () => {
+      const createRemoteJWKSetMock = jose.createRemoteJWKSet as jest.Mock;
+      const getJwksUrl = workos.userManagement.getJwksUrl as jest.Mock;
+      const originalImpl = getJwksUrl.getMockImplementation();
+
+      try {
+        // Populate the cache with the default URL.
+        await authkitLoader(createLoaderArgs(new Request('http://example.com/a', { headers: { Cookie: 'cookie' } })));
+        createRemoteJWKSetMock.mockClear();
+
+        // Same URL → no rebuild.
+        await authkitLoader(createLoaderArgs(new Request('http://example.com/b', { headers: { Cookie: 'cookie' } })));
+        expect(createRemoteJWKSetMock).not.toHaveBeenCalled();
+
+        // URL changes (e.g. consumer re-configures with a different clientId) →
+        // the cache must be invalidated and a new JWKS instance created.
+        getJwksUrl.mockImplementation(() => 'https://auth.workos.com/oauth/jwks/other-client');
+        await authkitLoader(createLoaderArgs(new Request('http://example.com/c', { headers: { Cookie: 'cookie' } })));
+        expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);
+
+        // Still the same new URL → still cached.
+        await authkitLoader(createLoaderArgs(new Request('http://example.com/d', { headers: { Cookie: 'cookie' } })));
+        expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);
+      } finally {
+        if (originalImpl) {
+          getJwksUrl.mockImplementation(originalImpl);
+        }
+      }
     });
   });
 
