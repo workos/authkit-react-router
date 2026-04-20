@@ -595,8 +595,17 @@ export async function getSessionFromCookie(cookie: string, session?: SessionData
   }
 }
 
+let cachedJWKS: ReturnType<typeof createRemoteJWKSet> | undefined;
+
+function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
+  if (!cachedJWKS) {
+    cachedJWKS = createRemoteJWKSet(new URL(getWorkOS().userManagement.getJwksUrl(getConfig('clientId'))));
+  }
+  return cachedJWKS;
+}
+
 async function verifyAccessToken(accessToken: string) {
-  const JWKS = createRemoteJWKSet(new URL(getWorkOS().userManagement.getJwksUrl(getConfig('clientId'))));
+  const JWKS = getJWKS();
   try {
     await jwtVerify(accessToken, JWKS);
     return true;

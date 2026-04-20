@@ -819,6 +819,72 @@ describe('session', () => {
     });
   });
 
+  describe('JWKS caching', () => {
+    const createLoaderArgs = (request: Request): LoaderFunctionArgs =>
+      ({
+        request,
+        params: {},
+        context: {},
+      }) as LoaderFunctionArgs;
+
+    const mockSessionData = {
+      accessToken: 'valid.jwt.token',
+      refreshToken: 'refresh.token',
+      user: {
+        id: 'user-1',
+        email: 'test@example.com',
+      },
+      impersonator: null,
+    };
+
+    beforeEach(() => {
+      const mockSession = createMockSession({
+        has: jest.fn().mockReturnValue(true),
+        get: jest.fn().mockReturnValue('encrypted-jwt'),
+        set: jest.fn(),
+      });
+      getSession.mockResolvedValue(mockSession);
+      unsealData.mockResolvedValue({
+        ...mockSessionData,
+        headers: { 'Set-Cookie': 'session-cookie' },
+      });
+      // Real createRemoteJWKSet returns a getKey function used by jwtVerify.
+      // The mock needs to return a truthy value so the module-level cache
+      // check in session.ts treats it as populated.
+      (jose.createRemoteJWKSet as jest.Mock).mockReturnValue(jest.fn());
+      jwtVerify.mockResolvedValue({
+        payload: {},
+        protectedHeader: {},
+        key: new TextEncoder().encode('test-key'),
+      } as jose.JWTVerifyResult & jose.ResolvedKey<jose.KeyLike>);
+      (jose.decodeJwt as jest.Mock).mockReturnValue({
+        sid: 'test-session-id',
+        org_id: 'org-123',
+        role: 'admin',
+        roles: ['admin'],
+        permissions: ['read', 'write'],
+        entitlements: ['premium'],
+        feature_flags: [],
+      });
+    });
+
+    it('creates the JWKS instance only once across multiple verifyAccessToken calls', async () => {
+      const createRemoteJWKSetMock = jose.createRemoteJWKSet as jest.Mock;
+
+      // Prime the module-scoped cache, then clear mock state so that any
+      // subsequent call to createRemoteJWKSet would show up in the count.
+      await authkitLoader(createLoaderArgs(new Request('http://example.com/a', { headers: { Cookie: 'cookie' } })));
+      createRemoteJWKSetMock.mockClear();
+
+      await authkitLoader(createLoaderArgs(new Request('http://example.com/b', { headers: { Cookie: 'cookie' } })));
+      await authkitLoader(createLoaderArgs(new Request('http://example.com/c', { headers: { Cookie: 'cookie' } })));
+      await authkitLoader(createLoaderArgs(new Request('http://example.com/d', { headers: { Cookie: 'cookie' } })));
+
+      expect(jwtVerify).toHaveBeenCalled();
+      expect(createRemoteJWKSetMock).not.toHaveBeenCalled();
+    });
+  });
+
   describe('saveSession', () => {
     const sessionData = {
       accessToken: 'new.valid.token',
