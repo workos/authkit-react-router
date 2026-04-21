@@ -40,11 +40,6 @@ export function createRequestWithSearchParams(request: Request, modifier: Search
 }
 
 /**
- * Creates a mock WorkOS authentication response object.
- * @param overrides - Any properties to override in the mock response.
- * @returns A mock WorkOS authentication response object.
- */
-/**
  * Build a sealed PKCE state value and matching Cookie header, the way
  * `getAuthorizationUrl` would emit them on the outbound redirect.
  *
@@ -83,6 +78,11 @@ export function createRequestWithCookieAndParams(
   return new Request(next.url, { ...next, headers, body: next.body });
 }
 
+/**
+ * Creates a mock WorkOS authentication response object.
+ * @param overrides - Any properties to override in the mock response.
+ * @returns A mock WorkOS authentication response object.
+ */
 export function createAuthWithCodeResponse(overrides: Record<string, unknown> = {}) {
   return {
     accessToken: 'access123',
