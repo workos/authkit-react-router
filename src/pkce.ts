@@ -13,6 +13,11 @@ const PKCE_COOKIE_MAX_AGE = 600;
  * 32-bit FNV-1a non-cryptographic hash. Inlined here rather than pulled in as
  * `@sindresorhus/fnv1a` because that package is ESM-only and this SDK ships
  * CommonJS. FNV-1a is a well-known, ~15-line algorithm — see RFC draft-eastlake-fnv.
+ *
+ * Note: this hashes UTF-16 code units (via `charCodeAt`) rather than UTF-8
+ * bytes. Callers only feed this ASCII-safe iron-session seals (base64url), so
+ * the distinction is irrelevant in practice — but don't reuse the function for
+ * non-ASCII input without re-encoding to bytes first.
  */
 function fnv1a32(input: string): number {
   let hash = 0x811c9dc5;
