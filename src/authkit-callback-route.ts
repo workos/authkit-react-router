@@ -12,8 +12,8 @@ import { getWorkOS } from './workos.js';
  * them, whether the exchange succeeded or failed, to prevent replays and
  * stale cookies affecting future auth attempts.
  */
-function clearPKCECookie(state: string): string {
-  return getPKCECookieString(state, /* expired */ true);
+function clearPKCECookie(state: string, request: Request): string {
+  return getPKCECookieString(state, { expired: true, request });
 }
 
 export function authLoader(options: HandleAuthOptions = {}) {
@@ -34,7 +34,7 @@ export function authLoader(options: HandleAuthOptions = {}) {
     // We always want to clear the PKCE cookie at the end of this handler,
     // success or failure. `pkceClearCookie` is populated as soon as we know
     // the state value and appended to every response below.
-    const pkceClearCookie = state ? clearPKCECookie(state) : null;
+    const pkceClearCookie = state ? clearPKCECookie(state, request) : null;
 
     try {
       if (!state) {

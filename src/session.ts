@@ -44,7 +44,7 @@ export async function refreshSession(request: Request, options: { organizationId
   const cookie = request.headers.get('Cookie');
   const session = cookie ? await getSessionFromCookie(cookie) : null;
   if (!session) {
-    const { url, headers } = await getAuthorizationUrl();
+    const { url, headers } = await getAuthorizationUrl({ request });
     throw redirect(url, { headers });
   }
 
@@ -362,7 +362,7 @@ export async function authkitLoader<Data = unknown>(
         const returnPathname = getReturnPathname(request.url);
         const cookieSession = await getSession(request.headers.get('Cookie'));
 
-        const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname });
+        const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
         throw redirect(url, {
           headers: [
             ['Set-Cookie', await destroySession(cookieSession)],
@@ -446,7 +446,7 @@ export async function authkitLoader<Data = unknown>(
       }
 
       const returnPathname = getReturnPathname(request.url);
-      const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname });
+      const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
       throw redirect(url, {
         headers: [
           ['Set-Cookie', await destroySession(cookieSession)],

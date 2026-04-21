@@ -27,7 +27,16 @@ import { getWorkOS } from './workos.js';
  *      - recover the `codeVerifier` to complete the PKCE exchange.
  */
 export async function getAuthorizationUrl(options: GetAuthURLOptions = {}): Promise<GetAuthURLResult> {
-  const { returnPathname, screenHint, organizationId, redirectUri, loginHint, prompt, state: customState } = options;
+  const {
+    returnPathname,
+    screenHint,
+    organizationId,
+    redirectUri,
+    loginHint,
+    prompt,
+    state: customState,
+    request,
+  } = options;
 
   const pkce = await getWorkOS().pkce.generate();
 
@@ -60,6 +69,6 @@ export async function getAuthorizationUrl(options: GetAuthURLOptions = {}): Prom
 
   return {
     url,
-    headers: { 'Set-Cookie': getPKCECookieString(sealedState) },
+    headers: { 'Set-Cookie': getPKCECookieString(sealedState, { request }) },
   };
 }

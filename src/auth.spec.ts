@@ -283,7 +283,7 @@ describe('auth', () => {
       );
     });
 
-    it('should handle when Set-Cookie header is missing', async () => {
+    it('omits the Set-Cookie response header when refreshSession returns none', async () => {
       // Create a mock without the Set-Cookie header
       const mockResponseWithoutCookie = {
         ...mockAuthResponse,
@@ -293,17 +293,10 @@ describe('auth', () => {
 
       await switchToOrganization(request, organizationId);
 
-      expect(data).toHaveBeenCalledWith(
-        { success: true, auth: mockResponseWithoutCookie },
-        {
-          headers: {
-            'Set-Cookie': '',
-          },
-        },
-      );
+      expect(data).toHaveBeenCalledWith({ success: true, auth: mockResponseWithoutCookie }, undefined);
     });
 
-    it('should handle when returnTo is provided but Set-Cookie header is missing', async () => {
+    it('omits the Set-Cookie response header on returnTo when refreshSession returns none', async () => {
       // Create a mock without the Set-Cookie header
       const mockResponseWithoutCookie = {
         ...mockAuthResponse,
@@ -313,11 +306,7 @@ describe('auth', () => {
 
       await switchToOrganization(request, organizationId, { returnTo: '/dashboard' });
 
-      expect(redirect).toHaveBeenCalledWith('/dashboard', {
-        headers: {
-          'Set-Cookie': '',
-        },
-      });
+      expect(redirect).toHaveBeenCalledWith('/dashboard', undefined);
     });
   });
 

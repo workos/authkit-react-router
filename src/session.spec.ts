@@ -641,9 +641,13 @@ describe('session', () => {
           expect(setCookies).toContain('wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600');
 
           // Verify getAuthorizationUrl was called with the correct returnPathname
-          expect(getAuthorizationUrlMock).toHaveBeenCalledWith({
-            returnPathname: '/dashboard/settings',
-          });
+          // and the request is threaded through for Secure-attribute detection.
+          expect(getAuthorizationUrlMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+              returnPathname: '/dashboard/settings',
+              request: expect.any(Request),
+            }),
+          );
         }
       });
 

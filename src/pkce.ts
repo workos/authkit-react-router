@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { unsealData } from 'iron-session';
 import * as v from 'valibot';
 import { getConfig } from './config.js';
@@ -10,60 +11,80 @@ export const PKCE_COOKIE_NAME = 'wos-auth-verifier';
 const PKCE_COOKIE_MAX_AGE = 600;
 
 /**
- * 32-bit FNV-1a non-cryptographic hash. Inlined here rather than pulled in as
- * `@sindresorhus/fnv1a` because that package is ESM-only and this SDK ships
- * CommonJS. FNV-1a is a well-known, ~15-line algorithm — see RFC draft-eastlake-fnv.
- *
- * Note: this hashes UTF-16 code units (via `charCodeAt`) rather than UTF-8
- * bytes. Callers only feed this ASCII-safe iron-session seals (base64url), so
- * the distinction is irrelevant in practice — but don't reuse the function for
- * non-ASCII input without re-encoding to bytes first.
- */
-function fnv1a32(input: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  // Force an unsigned 32-bit integer
-  return hash >>> 0;
-}
-
-/**
  * Short, deterministic hex fingerprint of an arbitrary string.
  * Used to give each PKCE flow its own cookie name without depending on the
- * internal format of the sealed state value.
+ * internal format of the sealed state value. Collision resistance is not
+ * security-critical here (cookie values are still integrity-checked via
+ * iron-session); the fingerprint only needs to spread concurrent flows
+ * across distinct cookie names.
  */
 function shortHash(input: string): string {
-  return fnv1a32(input).toString(16).padStart(8, '0');
+  return createHash('sha256').update(input).digest('hex').slice(0, 8);
 }
 
 /**
  * Derive a flow-specific cookie name so concurrent auth flows don't overwrite
- * each other's PKCE cookies. Uses an FNV-1a hash of the full sealed state.
+ * each other's PKCE cookies.
  */
 export function getPKCECookieNameForState(state: string): string {
   return `${PKCE_COOKIE_NAME}-${shortHash(state)}`;
 }
 
 /**
+ * Decide whether the PKCE cookie should carry the `Secure` attribute.
+ *
+ * Preference order:
+ *   1. An explicit `secure` override from the caller.
+ *   2. The live request protocol — the cookie is set on *this* response, and
+ *      the browser will drop `Secure` cookies on http:// pages even if the
+ *      configured redirect URI is https://.
+ *   3. Fall back to the configured redirectUri's protocol.
+ *
+ * A misconfigured redirectUri (unparseable URL) is not a fatal error here;
+ * we default to `Secure=true` and warn so the misconfiguration is visible.
+ */
+function resolveSecure({ secure, request }: { secure?: boolean; request?: Request } = {}): boolean {
+  if (typeof secure === 'boolean') return secure;
+
+  if (request) {
+    try {
+      return new URL(request.url).protocol === 'https:';
+    } catch {
+      // fall through to redirectUri-based detection
+    }
+  }
+
+  const redirectUri = getConfig('redirectUri');
+  try {
+    return new URL(redirectUri).protocol === 'https:';
+  } catch {
+    console.warn(
+      `[AuthKit] Could not parse redirectUri (${JSON.stringify(redirectUri)}); defaulting PKCE cookie to Secure=true.`,
+    );
+    return true;
+  }
+}
+
+/**
  * Build a `Set-Cookie` header string for the PKCE verifier cookie.
  *
  * `SameSite=Strict` would be stripped on the cross-site redirect back from
- * WorkOS, so it is downgraded to `Lax`. `SameSite=None` is preserved for
- * iframe / cross-origin embed flows.
+ * WorkOS, so it is set to `Lax` — the minimum that survives a top-level
+ * cross-site navigation back to our origin.
+ *
+ * Callers that have the incoming `Request` in hand should pass it via
+ * `options.request` so the `Secure` attribute reflects the actual protocol
+ * in use rather than the configured redirect URI's — otherwise running
+ * `npm run dev` on http:// while `WORKOS_REDIRECT_URI=https://…` would mint
+ * a `Secure` cookie the browser silently drops.
  */
-export function getPKCECookieString(sealedState: string, expired = false): string {
+export function getPKCECookieString(
+  sealedState: string,
+  options: { expired?: boolean; request?: Request; secure?: boolean } = {},
+): string {
+  const { expired = false, request, secure } = options;
   const name = getPKCECookieNameForState(sealedState);
   const value = expired ? '' : sealedState;
-
-  const redirectUri = getConfig('redirectUri');
-  let secure = true;
-  try {
-    secure = new URL(redirectUri).protocol === 'https:';
-  } catch {
-    secure = true;
-  }
 
   const parts = [
     `${name}=${value}`,
@@ -72,7 +93,7 @@ export function getPKCECookieString(sealedState: string, expired = false): strin
     'SameSite=Lax',
     `Max-Age=${expired ? 0 : PKCE_COOKIE_MAX_AGE}`,
   ];
-  if (secure) {
+  if (resolveSecure({ secure, request })) {
     parts.push('Secure');
   }
   return parts.join('; ');

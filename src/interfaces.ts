@@ -107,6 +107,13 @@ export interface GetAuthURLOptions {
    * alongside it for round-trip delivery only.
    */
   state?: string;
+  /**
+   * The incoming `Request`, if available. When provided the PKCE cookie's
+   * `Secure` attribute is derived from the live request protocol rather than
+   * the configured `redirectUri` — necessary so local dev on `http://` with
+   * a `https://` redirect URI still sets a cookie the browser will keep.
+   */
+  request?: Request;
 }
 
 /**
@@ -114,8 +121,13 @@ export interface GetAuthURLOptions {
  * to whatever redirect response they return so the short-lived PKCE /
  * CSRF-binding cookie is set on the browser before WorkOS redirects back.
  *
+ * The concrete `{ 'Set-Cookie': string }` shape is still assignable to
+ * `HeadersInit` (via `Record<string, string>`), so callers can spread it
+ * directly into a `new Headers({ ...headers, 'Cache-Control': 'no-store' })`
+ * or pass it straight to `redirect(url, { headers })`.
+ *
  * @example
- * const { url, headers } = await getSignInUrl('/dashboard');
+ * const { url, headers } = await getSignInUrl('/dashboard', request);
  * return redirect(url, { headers });
  */
 export interface GetAuthURLResult {
