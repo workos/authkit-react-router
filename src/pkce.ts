@@ -35,18 +35,34 @@ export function getPKCECookieNameForState(state: string): string {
  *
  * Preference order:
  *   1. An explicit `secure` override from the caller.
- *   2. The live request protocol — the cookie is set on *this* response, and
- *      the browser will drop `Secure` cookies on http:// pages even if the
- *      configured redirect URI is https://.
- *   3. Fall back to the configured redirectUri's protocol.
+ *   2. `X-Forwarded-Proto` from the incoming request — the canonical signal
+ *      when TLS is terminated upstream (load balancer, reverse proxy) and
+ *      the app receives a plain http:// request for an https:// site.
+ *   3. The live request protocol — the cookie is set on *this* response,
+ *      and the browser will drop `Secure` cookies on http:// pages even if
+ *      the configured redirect URI is https://.
+ *   4. The per-call `redirectUri` override, when provided, so that a caller
+ *      passing `getAuthorizationUrl({ redirectUri })` without a request can
+ *      still control the cookie's Secure attribute for that specific flow.
+ *   5. Fall back to the configured redirectUri's protocol.
  *
- * A misconfigured redirectUri (unparseable URL) is not a fatal error here;
- * we default to `Secure=true` and warn so the misconfiguration is visible.
+ * A misconfigured / unparseable redirectUri is not fatal; we default to
+ * `Secure=true` and warn so the misconfiguration is visible.
  */
-function resolveSecure({ secure, request }: { secure?: boolean; request?: Request } = {}): boolean {
+function resolveSecure({
+  secure,
+  request,
+  redirectUri,
+}: { secure?: boolean; request?: Request; redirectUri?: string } = {}): boolean {
   if (typeof secure === 'boolean') return secure;
 
   if (request) {
+    const forwardedProto = request.headers.get('x-forwarded-proto');
+    if (forwardedProto) {
+      // X-Forwarded-Proto may be a comma-separated list when multiple proxies
+      // chain; the leftmost value is the client-facing protocol.
+      return forwardedProto.split(',')[0].trim().toLowerCase() === 'https';
+    }
     try {
       return new URL(request.url).protocol === 'https:';
     } catch {
@@ -54,12 +70,12 @@ function resolveSecure({ secure, request }: { secure?: boolean; request?: Reques
     }
   }
 
-  const redirectUri = getConfig('redirectUri');
+  const uri = redirectUri ?? getConfig('redirectUri');
   try {
-    return new URL(redirectUri).protocol === 'https:';
+    return new URL(uri).protocol === 'https:';
   } catch {
     console.warn(
-      `[AuthKit] Could not parse redirectUri (${JSON.stringify(redirectUri)}); defaulting PKCE cookie to Secure=true.`,
+      `[AuthKit] Could not parse redirectUri (${JSON.stringify(uri)}); defaulting PKCE cookie to Secure=true.`,
     );
     return true;
   }
@@ -80,9 +96,9 @@ function resolveSecure({ secure, request }: { secure?: boolean; request?: Reques
  */
 export function getPKCECookieString(
   sealedState: string,
-  options: { expired?: boolean; request?: Request; secure?: boolean } = {},
+  options: { expired?: boolean; request?: Request; secure?: boolean; redirectUri?: string } = {},
 ): string {
-  const { expired = false, request, secure } = options;
+  const { expired = false, request, secure, redirectUri } = options;
   const name = getPKCECookieNameForState(sealedState);
   const value = expired ? '' : sealedState;
 
@@ -93,7 +109,7 @@ export function getPKCECookieString(
     'SameSite=Lax',
     `Max-Age=${expired ? 0 : PKCE_COOKIE_MAX_AGE}`,
   ];
-  if (resolveSecure({ secure, request })) {
+  if (resolveSecure({ secure, request, redirectUri })) {
     parts.push('Secure');
   }
   return parts.join('; ');

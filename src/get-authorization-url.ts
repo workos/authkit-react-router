@@ -69,6 +69,6 @@ export async function getAuthorizationUrl(options: GetAuthURLOptions = {}): Prom
 
   return {
     url,
-    headers: { 'Set-Cookie': getPKCECookieString(sealedState, { request }) },
+    headers: { 'Set-Cookie': getPKCECookieString(sealedState, { request, redirectUri }) },
   };
 }

@@ -54,6 +54,64 @@ describe('getPKCECookieString', () => {
       expect(cookieAttrs(getPKCECookieString(sealedState))).not.toContain('Secure');
     });
 
+    it('honors X-Forwarded-Proto=https behind a TLS-terminating proxy', () => {
+      // TLS terminator forwards a plain http:// request upstream but the
+      // public site is https://. The PKCE cookie must still be Secure.
+      getConfig.mockImplementation((key: string) =>
+        key === 'redirectUri' ? 'https://app.example.com/callback' : undefined,
+      );
+
+      const cookie = getPKCECookieString(sealedState, {
+        request: new Request('http://internal.lb:8080/login', {
+          headers: { 'X-Forwarded-Proto': 'https' },
+        }),
+      });
+
+      expect(cookieAttrs(cookie)).toContain('Secure');
+    });
+
+    it('honors X-Forwarded-Proto=http even when request.url is https', () => {
+      getConfig.mockImplementation((key: string) =>
+        key === 'redirectUri' ? 'https://app.example.com/callback' : undefined,
+      );
+
+      const cookie = getPKCECookieString(sealedState, {
+        request: new Request('https://internal.lb/login', {
+          headers: { 'X-Forwarded-Proto': 'http' },
+        }),
+      });
+
+      expect(cookieAttrs(cookie)).not.toContain('Secure');
+    });
+
+    it('uses the leftmost entry of a chained X-Forwarded-Proto header', () => {
+      getConfig.mockImplementation((key: string) =>
+        key === 'redirectUri' ? 'http://localhost/callback' : undefined,
+      );
+
+      const cookie = getPKCECookieString(sealedState, {
+        request: new Request('http://internal.lb/login', {
+          headers: { 'X-Forwarded-Proto': 'https, http' },
+        }),
+      });
+
+      expect(cookieAttrs(cookie)).toContain('Secure');
+    });
+
+    it('prefers a per-call redirectUri override over the global config when no request is supplied', () => {
+      // Global config says https, but this specific flow is being initiated
+      // against a different redirect URI (e.g. a dev tunnel on http).
+      getConfig.mockImplementation((key: string) =>
+        key === 'redirectUri' ? 'https://app.example.com/callback' : undefined,
+      );
+
+      const cookie = getPKCECookieString(sealedState, {
+        redirectUri: 'http://localhost:5173/callback',
+      });
+
+      expect(cookieAttrs(cookie)).not.toContain('Secure');
+    });
+
     it('honors an explicit secure override over both request and redirectUri', () => {
       getConfig.mockImplementation((key: string) =>
         key === 'redirectUri' ? 'https://app.example.com/callback' : undefined,
