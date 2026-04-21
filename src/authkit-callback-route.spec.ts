@@ -197,6 +197,74 @@ describe('authLoader', () => {
     expect(response.headers.get('Location')).toBe('http://example.com/dashboard?foo=bar');
   });
 
+  it('preserves the fragment on the returnPathname', async () => {
+    loader = authLoader({ returnPathname: '/dashboard#section' });
+    const response = await loader({
+      request,
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
+
+    assertIsResponse(response);
+    expect(response.status).toBe(302);
+    expect(response.headers.get('Location')).toBe('http://example.com/dashboard#section');
+  });
+
+  it('preserves search params and fragment together', async () => {
+    loader = authLoader({ returnPathname: '/dashboard?foo=bar#section' });
+    const response = await loader({
+      request,
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
+
+    assertIsResponse(response);
+    expect(response.status).toBe(302);
+    expect(response.headers.get('Location')).toBe('http://example.com/dashboard?foo=bar#section');
+  });
+
+  it('falls back to the configured returnPathname when the sealed state value is hostile', async () => {
+    // Simulate a tampered / hand-forged sealed state that bypasses the
+    // sanitization in getAuthorizationUrl. The callback must reject the
+    // hostile value and fall back to the configured option rather than
+    // redirecting the user to an attacker-controlled destination.
+    loader = authLoader({ returnPathname: '/dashboard' });
+    const scoped = await createSealedState({ returnPathname: '//evil.com/pwn' });
+    request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), scoped.cookieHeader, {
+      code: 'test-code',
+      state: scoped.sealedState,
+    });
+
+    const response = await loader({
+      request,
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
+
+    assertIsResponse(response);
+    expect(response.status).toBe(302);
+    expect(response.headers.get('Location')).toBe('http://example.com/dashboard');
+  });
+
+  it('rejects a CRLF-smuggled returnPathname in the sealed state', async () => {
+    loader = authLoader({ returnPathname: '/dashboard' });
+    const scoped = await createSealedState({ returnPathname: '/foo\r\nSet-Cookie: bad' });
+    request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), scoped.cookieHeader, {
+      code: 'test-code',
+      state: scoped.sealedState,
+    });
+
+    const response = await loader({
+      request,
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
+
+    assertIsResponse(response);
+    expect(response.status).toBe(302);
+    expect(response.headers.get('Location')).toBe('http://example.com/dashboard');
+  });
+
   it('handles calling onSuccess when provided', async () => {
     const onSuccess = jest.fn();
     loader = authLoader({ onSuccess });

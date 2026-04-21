@@ -2,6 +2,7 @@ import { sealData } from 'iron-session';
 import { getConfig } from './config.js';
 import type { GetAuthURLOptions, GetAuthURLResult, State } from './interfaces.js';
 import { getPKCECookieString } from './pkce.js';
+import { sanitizeReturnPathname } from './return-pathname.js';
 import { getWorkOS } from './workos.js';
 
 /**
@@ -44,7 +45,10 @@ export async function getAuthorizationUrl(options: GetAuthURLOptions = {}): Prom
     nonce: crypto.randomUUID(),
     codeVerifier: pkce.codeVerifier,
     customState,
-    returnPathname,
+    // Sanitize before sealing so a hostile caller can't plant a malicious
+    // return target (absolute URL, CRLF smuggle, dot-segment traversal, etc.)
+    // that the callback would later redirect to.
+    returnPathname: returnPathname !== undefined ? sanitizeReturnPathname(returnPathname) : undefined,
   } satisfies State;
 
   const sealedState = await sealData(state, {

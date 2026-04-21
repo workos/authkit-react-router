@@ -2,6 +2,7 @@ import { LoaderFunctionArgs, data, redirect } from 'react-router';
 import { getConfig } from './config.js';
 import { HandleAuthOptions } from './interfaces.js';
 import { getPKCECookieString, getStateFromPKCECookieValue, readPKCECookie } from './pkce.js';
+import { sanitizeReturnPathname } from './return-pathname.js';
 import { encryptSession } from './session.js';
 import { configureSessionStorage } from './sessionStorage.js';
 import { getWorkOS } from './workos.js';
@@ -74,19 +75,23 @@ export function authLoader(options: HandleAuthOptions = {}) {
       url.searchParams.delete('code');
       url.searchParams.delete('state');
 
-      const returnPathname = returnPathnameState ?? returnPathnameOption;
+      // Sanitize each candidate separately so a hostile sealed-state value
+      // (e.g. an absolute URL, CRLF smuggle, or encoded traversal) can't
+      // erase a legitimate configured default. `sanitizeReturnPathname`
+      // returns '/' on rejection, which we treat as "fall back to the option".
+      const safeFromState = returnPathnameState ? sanitizeReturnPathname(returnPathnameState) : '/';
+      const safeFromOption = sanitizeReturnPathname(returnPathnameOption);
+      const returnPathname = safeFromState !== '/' ? safeFromState : safeFromOption;
 
-      // Extract the search params if they are present
-      if (returnPathname.includes('?')) {
-        const newUrl = new URL(returnPathname, 'https://example.com');
-        url.pathname = newUrl.pathname;
-
-        for (const [key, value] of newUrl.searchParams) {
-          url.searchParams.append(key, value);
-        }
-      } else {
-        url.pathname = returnPathname;
+      // Reconstruct pathname + search + hash together. Using `.pathname = ...`
+      // on a raw string with a fragment would percent-encode the `#`, so we
+      // parse the return target and reassign each piece.
+      const parsedReturn = new URL(returnPathname, 'https://placeholder.invalid');
+      url.pathname = parsedReturn.pathname;
+      for (const [key, value] of parsedReturn.searchParams) {
+        url.searchParams.append(key, value);
       }
+      url.hash = parsedReturn.hash;
 
       // The refreshToken should never be accessible publicly, hence why we encrypt it
       // in the cookie session. Alternatively you could persist the refresh token in a
