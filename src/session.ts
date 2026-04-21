@@ -539,10 +539,7 @@ export async function terminateSession(request: Request, { returnTo }: { returnT
   const { getSession, destroySession } = await getSessionStorage();
   const cookieHeader = request.headers.get('Cookie');
   const encryptedSession = await getSession(cookieHeader);
-  const { accessToken } = (await getSessionFromCookie(
-    cookieHeader as string,
-    encryptedSession,
-  )) as Session;
+  const { accessToken } = (await getSessionFromCookie(cookieHeader as string, encryptedSession)) as Session;
 
   const { sessionId } = getClaimsFromAccessToken(accessToken);
 
