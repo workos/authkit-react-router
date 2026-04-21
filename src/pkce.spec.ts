@@ -33,9 +33,7 @@ describe('getPKCECookieString', () => {
     });
 
     it('marks the cookie Secure when the request is https', () => {
-      getConfig.mockImplementation((key: string) =>
-        key === 'redirectUri' ? 'http://localhost/callback' : undefined,
-      );
+      getConfig.mockImplementation((key: string) => (key === 'redirectUri' ? 'http://localhost/callback' : undefined));
 
       const cookie = getPKCECookieString(sealedState, {
         request: new Request('https://app.example.com/login'),
@@ -51,9 +49,7 @@ describe('getPKCECookieString', () => {
 
       expect(cookieAttrs(getPKCECookieString(sealedState))).toContain('Secure');
 
-      getConfig.mockImplementation((key: string) =>
-        key === 'redirectUri' ? 'http://localhost/callback' : undefined,
-      );
+      getConfig.mockImplementation((key: string) => (key === 'redirectUri' ? 'http://localhost/callback' : undefined));
 
       expect(cookieAttrs(getPKCECookieString(sealedState))).not.toContain('Secure');
     });
