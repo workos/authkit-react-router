@@ -28,14 +28,19 @@ export function authLoader(options: HandleAuthOptions = {}) {
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
 
-    if (!code) {
-      return;
-    }
-
     // We always want to clear the PKCE cookie at the end of this handler,
     // success or failure. `pkceClearCookie` is populated as soon as we know
-    // the state value and appended to every response below.
+    // the state value and appended to every response below — including
+    // early exits for WorkOS error callbacks (`?error=…&state=…`) that
+    // would otherwise leave an orphan verifier cookie in the browser.
     const pkceClearCookie = state ? clearPKCECookie(state, request) : null;
+
+    if (!code) {
+      if (pkceClearCookie) {
+        return new Response(null, { headers: { 'Set-Cookie': pkceClearCookie } });
+      }
+      return;
+    }
 
     try {
       if (!state) {

@@ -65,6 +65,27 @@ describe('authLoader', () => {
       expect(response).toBeUndefined();
     });
 
+    it('clears the PKCE cookie when WorkOS returns an error callback without a code', async () => {
+      // Simulates `?error=access_denied&state=sealedState` — WorkOS error
+      // callbacks reach us with `state` but no `code`. The PKCE verifier
+      // cookie should be cleared so an abandoned flow doesn't linger in
+      // the browser until its 10-minute TTL expires.
+      request = createRequestWithSearchParams(new Request('http://example.com/callback'), {
+        state: 'sealed-state',
+        error: 'access_denied',
+      });
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as Response;
+
+      expect(response).toBeInstanceOf(Response);
+      const setCookie = response.headers.get('Set-Cookie') ?? '';
+      expect(setCookie).toMatch(/^wos-auth-verifier-[0-9a-f]+=;/);
+      expect(setCookie).toMatch(/Max-Age=0/);
+    });
+
     it('returns 500 when state is missing', async () => {
       request = createRequestWithSearchParams(new Request('http://example.com/callback'), {
         code: 'test-code',

@@ -44,6 +44,10 @@ used to signal breaking changes.
   `wos-auth-verifier-*` cookies left behind by abandoned OAuth flows
   (tabs closed mid-sign-in, etc.) so they don't accumulate under the
   browser's per-domain cookie cap.
+- The callback now clears the PKCE verifier cookie on WorkOS error
+  callbacks (`?error=…&state=…` with no `code`) instead of only on
+  success/exception paths, so abandoned flows don't leave orphan
+  cookies until the 10-minute TTL expires.
 - `verifyAccessToken` now validates the JWT `iss` claim against
   `https://api.workos.com` (the fixed issuer WorkOS stamps on every
   access token) in addition to the signature, so a token signed by a
