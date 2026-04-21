@@ -85,9 +85,7 @@ describe('getPKCECookieString', () => {
     });
 
     it('uses the leftmost entry of a chained X-Forwarded-Proto header', () => {
-      getConfig.mockImplementation((key: string) =>
-        key === 'redirectUri' ? 'http://localhost/callback' : undefined,
-      );
+      getConfig.mockImplementation((key: string) => (key === 'redirectUri' ? 'http://localhost/callback' : undefined));
 
       const cookie = getPKCECookieString(sealedState, {
         request: new Request('http://internal.lb/login', {
