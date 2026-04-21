@@ -44,6 +44,11 @@ used to signal breaking changes.
   `wos-auth-verifier-*` cookies left behind by abandoned OAuth flows
   (tabs closed mid-sign-in, etc.) so they don't accumulate under the
   browser's per-domain cookie cap.
+- `verifyAccessToken` now validates the JWT `iss` claim against
+  `https://api.workos.com` (the fixed issuer WorkOS stamps on every
+  access token) in addition to the signature, so a token signed by a
+  different WorkOS project whose JWKS happens to resolve to the same
+  keys is rejected.
 
 ### Docs
 

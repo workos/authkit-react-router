@@ -456,6 +456,16 @@ describe('session', () => {
         jsonSpy.mockRestore();
       });
 
+      it('validates the access token issuer claim against https://api.workos.com', async () => {
+        await authkitLoader(createLoaderArgs(createMockRequest()));
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[0]).toBe('valid.jwt.token');
+          expect(call[2]).toEqual({ issuer: 'https://api.workos.com' });
+        }
+      });
+
       it('should return authorized data with session claims', async () => {
         const { data } = await authkitLoader(createLoaderArgs(createMockRequest()));
 

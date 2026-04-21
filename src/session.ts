@@ -607,10 +607,22 @@ export async function getSessionFromCookie(cookie: string, session?: SessionData
   }
 }
 
+// WorkOS access tokens carry a fixed `iss` claim regardless of environment
+// or client id; see
+// https://workos.com/docs/reference/user-management/session-tokens/access-token.
+// Validating it defends against tokens signed by a different WorkOS project
+// whose JWKS happens to resolve to the same keys, and matches the team's
+// "always validate iss" JWT rule.
+//
+// WorkOS access tokens do not carry a standard `aud` claim — the target
+// client is encoded as `client_id` instead — so we do not pass `audience`
+// to jwtVerify here; doing so would reject every token.
+const WORKOS_JWT_ISSUER = 'https://api.workos.com';
+
 async function verifyAccessToken(accessToken: string) {
   const JWKS = createRemoteJWKSet(new URL(getWorkOS().userManagement.getJwksUrl(getConfig('clientId'))));
   try {
-    await jwtVerify(accessToken, JWKS);
+    await jwtVerify(accessToken, JWKS, { issuer: WORKOS_JWT_ISSUER });
     return true;
   } catch (e) {
     return false;
