@@ -122,7 +122,10 @@ describe('session', () => {
 
     // Reset getAuthorizationUrl mock
     getAuthorizationUrlMock.mockReset();
-    getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize');
+    getAuthorizationUrlMock.mockResolvedValue({
+      url: 'https://auth.workos.com/oauth/authorize',
+      sealedState: 'mock-sealed-state',
+    });
   });
 
   describe('encryptSession', () => {
@@ -301,7 +304,7 @@ describe('session', () => {
         });
       });
 
-      it('should redirect to login when ensureSignedIn is true', async () => {
+      it('should redirect to login when ensureSignedIn is true with destroy-session + PKCE cookies', async () => {
         try {
           await authkitLoader(createLoaderArgs(createMockRequest()), { ensureSignedIn: true });
           fail('Expected redirect response to be thrown');
@@ -309,7 +312,10 @@ describe('session', () => {
           assertIsResponse(response);
           expect(response.status).toBe(302);
           expect(response.headers.get('Location')).toMatch(/^https:\/\/auth\.workos\.com\/oauth/);
-          expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          const cookies = response.headers.getSetCookie();
+          expect(cookies).toHaveLength(2);
+          expect(cookies).toContain('destroyed-session-cookie');
+          expect(cookies.some((c) => c.includes('mock-sealed-state') && c.includes('wos-auth-verifier'))).toBe(true);
         }
       });
 
@@ -617,7 +623,10 @@ describe('session', () => {
         authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
 
         // Setup the mock to return a URL with state parameter
-        getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize?state=abc123');
+        getAuthorizationUrlMock.mockResolvedValue({
+          url: 'https://auth.workos.com/oauth/authorize?state=abc123',
+          sealedState: 'mock-sealed-state',
+        });
 
         try {
           const mockRequest = createMockRequest('test-cookie', 'https://app.example.com/dashboard/settings');
@@ -627,7 +636,10 @@ describe('session', () => {
           assertIsResponse(response);
           expect(response.status).toBe(302);
           expect(response.headers.get('Location')).toBe('https://auth.workos.com/oauth/authorize?state=abc123');
-          expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          const cookies = response.headers.getSetCookie();
+          expect(cookies).toHaveLength(2);
+          expect(cookies).toContain('destroyed-session-cookie');
+          expect(cookies.some((c) => c.includes('mock-sealed-state') && c.includes('wos-auth-verifier'))).toBe(true);
 
           // Verify getAuthorizationUrl was called with the correct returnPathname
           expect(getAuthorizationUrlMock).toHaveBeenCalledWith({
@@ -795,7 +807,7 @@ describe('session', () => {
       });
     });
 
-    it('should redirect to sign-in when no session exists', async () => {
+    it('should redirect to sign-in when no session exists, with PKCE cookie', async () => {
       // Mock no session found
       unsealData.mockResolvedValue(null);
 
@@ -806,6 +818,10 @@ describe('session', () => {
         assertIsResponse(response);
         expect(response.status).toBe(302);
         expect(response.headers.get('Location')).toMatch(/^https:\/\/auth\.workos\.com\/oauth/);
+        const cookies = response.headers.getSetCookie();
+        expect(cookies).toHaveLength(1);
+        expect(cookies[0]).toContain('wos-auth-verifier');
+        expect(cookies[0]).toContain('mock-sealed-state');
       }
     });
 

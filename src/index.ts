@@ -1,4 +1,12 @@
-import { getSignInUrl, getSignUpUrl, signOut, switchToOrganization, withAuth } from './auth.js';
+import {
+  getSignInUrl,
+  getSignUpUrl,
+  redirectToSignIn,
+  redirectToSignUp,
+  signOut,
+  switchToOrganization,
+  withAuth,
+} from './auth.js';
 import { authLoader } from './authkit-callback-route.js';
 import { configure, getConfig } from './config.js';
 import { authkitLoader, refreshSession, saveSession } from './session.js';
@@ -13,6 +21,8 @@ export {
   getSignInUrl,
   getSignUpUrl,
   getWorkOS,
+  redirectToSignIn,
+  redirectToSignUp,
   refreshSession,
   saveSession,
   signOut,

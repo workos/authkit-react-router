@@ -1,4 +1,5 @@
 import { data, redirect, type LoaderFunctionArgs, type SessionData } from 'react-router';
+import { buildPKCECookieHeader } from './cookie.js';
 import { getAuthorizationUrl } from './get-authorization-url.js';
 import type {
   AccessToken,
@@ -9,6 +10,7 @@ import type {
   UnauthorizedData,
   UnwrapData,
 } from './interfaces.js';
+import { sanitizeReturnPathname } from './return-pathname.js';
 import { getWorkOS } from './workos.js';
 
 import { sealData, unsealData } from 'iron-session';
@@ -44,7 +46,10 @@ export async function refreshSession(request: Request, options: { organizationId
   const cookie = request.headers.get('Cookie');
   const session = cookie ? await getSessionFromCookie(cookie) : null;
   if (!session) {
-    throw redirect(await getAuthorizationUrl());
+    const { url, sealedState } = await getAuthorizationUrl();
+    const response = redirect(url);
+    response.headers.append('Set-Cookie', buildPKCECookieHeader(sealedState));
+    throw response;
   }
 
   try {
@@ -361,11 +366,11 @@ export async function authkitLoader<Data = unknown>(
         const returnPathname = getReturnPathname(request.url);
         const cookieSession = await getSession(request.headers.get('Cookie'));
 
-        throw redirect(await getAuthorizationUrl({ returnPathname }), {
-          headers: {
-            'Set-Cookie': await destroySession(cookieSession),
-          },
-        });
+        const { url, sealedState } = await getAuthorizationUrl({ returnPathname });
+        const response = redirect(url);
+        response.headers.append('Set-Cookie', await destroySession(cookieSession));
+        response.headers.append('Set-Cookie', buildPKCECookieHeader(sealedState));
+        throw response;
       }
 
       const auth: UnauthorizedData = {
@@ -443,11 +448,11 @@ export async function authkitLoader<Data = unknown>(
       }
 
       const returnPathname = getReturnPathname(request.url);
-      throw redirect(await getAuthorizationUrl({ returnPathname }), {
-        headers: {
-          'Set-Cookie': await destroySession(cookieSession),
-        },
-      });
+      const { url, sealedState } = await getAuthorizationUrl({ returnPathname });
+      const response = redirect(url);
+      response.headers.append('Set-Cookie', await destroySession(cookieSession));
+      response.headers.append('Set-Cookie', buildPKCECookieHeader(sealedState));
+      throw response;
     }
 
     // Propagate other errors
@@ -609,5 +614,6 @@ function getReturnPathname(url: string): string {
   const newUrl = new URL(url);
 
   // istanbul ignore next
-  return `${newUrl.pathname}${newUrl.searchParams.size > 0 ? '?' + newUrl.searchParams.toString() : ''}`;
+  const raw = `${newUrl.pathname}${newUrl.searchParams.size > 0 ? '?' + newUrl.searchParams.toString() : ''}`;
+  return sanitizeReturnPathname(raw);
 }

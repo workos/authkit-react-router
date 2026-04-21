@@ -145,7 +145,7 @@ export function App() {
   // Retrieves the user from the session or returns `null` if no user is signed in
   // Other supported values include `sessionId`, `organizationId`,
   // `role`, `permissions`, `entitlements`, `featureFlags`, and `impersonator`.
-  const { user, signInUrl, signUpUrl } = useLoaderData<typeof loader>();
+  const { user } = useLoaderData<typeof loader>();
 
   return (
     <div>
@@ -155,33 +155,44 @@ export function App() {
 }
 ```
 
-For pages where you want to display a signed-in and signed-out view, use `authkitLoader` to retrieve the user profile from WorkOS. You can pass in additional data by providing a loader function directly to `authkitLoader`.
+### Sign-in and sign-up links
+
+Starting in v0.11, authentication is initiated from a dedicated route. Point `<Link>` at that route — the loader returns a `Response` that redirects to WorkOS and sets the PKCE cookie atomically. The old `getSignInUrl` / `getSignUpUrl` helpers were removed because they were vulnerable to login-CSRF / session-fixation (see the [security advisory](./SECURITY.md#v011-csrf-fix)).
 
 ```tsx
-import { type ActionFunctionArgs, type LoaderFunctionArgs, data, Form, Link, useLoaderData } from 'react-router';
-import { getSignInUrl, getSignUpUrl, signOut, authkitLoader } from '@workos-inc/authkit-react-router';
+// app/routes/auth.sign-in.tsx
+import type { LoaderFunctionArgs } from 'react-router';
+import { redirectToSignIn } from '@workos-inc/authkit-react-router';
 
-export const loader = (args: LoaderFunctionArgs) =>
-  authkitLoader(args, async ({ request, auth }) => {
-    return data({
-      signInUrl: await getSignInUrl(),
-      signUpUrl: await getSignUpUrl(),
-    });
-  });
+export const loader = ({ request: _request }: LoaderFunctionArgs) => redirectToSignIn();
+
+// app/routes/auth.sign-up.tsx
+import type { LoaderFunctionArgs } from 'react-router';
+import { redirectToSignUp } from '@workos-inc/authkit-react-router';
+
+export const loader = ({ request: _request }: LoaderFunctionArgs) => redirectToSignUp();
+```
+
+```tsx
+// In any page:
+import { type ActionFunctionArgs, type LoaderFunctionArgs, Form, Link, useLoaderData } from 'react-router';
+import { signOut, authkitLoader } from '@workos-inc/authkit-react-router';
+
+export const loader = (args: LoaderFunctionArgs) => authkitLoader(args);
 
 export async function action({ request }: ActionFunctionArgs) {
   return await signOut(request);
 }
 
 export default function HomePage() {
-  const { user, signInUrl, signUpUrl } = useLoaderData<typeof loader>();
+  const { user } = useLoaderData<typeof loader>();
 
   if (!user) {
     return (
       <>
-        <Link to={signInUrl}>Log in</Link>
+        <Link to="/auth/sign-in">Log in</Link>
         <br />
-        <Link to={signUpUrl}>Sign Up</Link>
+        <Link to="/auth/sign-up">Sign Up</Link>
       </>
     );
   }
@@ -193,6 +204,33 @@ export default function HomePage() {
     </Form>
   );
 }
+```
+
+Pass `returnTo` to `redirectToSignIn` / `redirectToSignUp` to send the user back to a specific page after authentication (only pathnames are accepted; absolute URLs are rejected to prevent open-redirect regressions):
+
+```tsx
+// app/routes/auth.sign-in.tsx
+export const loader = ({ request }: LoaderFunctionArgs) => {
+  const returnTo = new URL(request.url).searchParams.get('returnTo') ?? '/';
+  return redirectToSignIn({ returnTo });
+};
+```
+
+### Migration from 0.x
+
+```diff
+- import { getSignInUrl, getSignUpUrl } from '@workos-inc/authkit-react-router';
++ import { redirectToSignIn, redirectToSignUp } from '@workos-inc/authkit-react-router';
+
+// In your page loader:
+- return data({ signInUrl: await getSignInUrl(), signUpUrl: await getSignUpUrl() });
+
+// In a new dedicated route (app/routes/auth.sign-in.tsx):
++ export const loader = () => redirectToSignIn();
+
+// In your UI:
+- <Link to={signInUrl}>Log in</Link>
++ <Link to="/auth/sign-in">Log in</Link>
 ```
 
 ### Requiring auth

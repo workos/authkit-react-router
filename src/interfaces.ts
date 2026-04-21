@@ -1,5 +1,6 @@
 import type { SessionStorage, SessionIdStorageStrategy, data, SessionData } from 'react-router';
 import type { OauthTokens, User } from '@workos-inc/node';
+import * as v from 'valibot';
 
 export type DataWithResponseInit<T> = ReturnType<typeof data<T>>;
 
@@ -26,6 +27,7 @@ export interface AuthLoaderSuccessData {
   refreshToken: string;
   user: User;
   organizationId: string | null;
+  state?: string;
 }
 
 export interface RefreshErrorOptions {
@@ -93,6 +95,34 @@ export interface NoUserInfo {
 export interface GetAuthURLOptions {
   screenHint?: 'sign-up' | 'sign-in';
   returnPathname?: string;
+  organizationId?: string;
+  redirectUri?: string;
+  loginHint?: string;
+  prompt?: 'consent';
+  state?: string;
+}
+
+export const StateSchema = v.object({
+  nonce: v.string(),
+  customState: v.optional(v.string()),
+  returnPathname: v.optional(v.string()),
+  codeVerifier: v.string(),
+});
+
+export type State = v.InferOutput<typeof StateSchema>;
+
+export interface GetAuthURLResult {
+  url: string;
+  sealedState: string;
+}
+
+export interface CookieOptions {
+  path: '/';
+  httpOnly: true;
+  secure: boolean;
+  sameSite: 'lax' | 'strict' | 'none';
+  maxAge: number;
+  domain: string | undefined;
 }
 
 export type AuthKitLoaderOptions = {
