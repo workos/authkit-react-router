@@ -45,11 +45,23 @@ jest.mock('react-router', () => {
 describe('auth', () => {
   beforeEach(() => {
     jest.spyOn(authorizationUrl, 'getAuthorizationUrl');
+    getConfig.mockImplementation((key: string) => {
+      const map: Record<string, unknown> = {
+        clientId: 'client_1234567890',
+        redirectUri: 'http://localhost:5173/callback',
+        cookiePassword: 'kR620keEzOIzPThfnMEAba8XYgKdQ5vg',
+        apiKey: 'sk_test_1234567890',
+        cookieName: 'wos-session',
+      };
+      return map[key];
+    });
   });
 
   describe('getSignInUrl', () => {
-    it('should return a URL', async () => {
-      expect(await getSignInUrl('/test')).toMatch(/^https:\/\/api\.workos\.com/);
+    it('returns a URL and a PKCE Set-Cookie header', async () => {
+      const result = await getSignInUrl('/test');
+      expect(result.url).toMatch(/^https:\/\/api\.workos\.com/);
+      expect(result.headers['Set-Cookie']).toMatch(/^wos-auth-verifier-/);
       expect(authorizationUrl.getAuthorizationUrl).toHaveBeenCalledWith(
         expect.objectContaining({ returnPathname: '/test', screenHint: 'sign-in' }),
       );
@@ -57,8 +69,10 @@ describe('auth', () => {
   });
 
   describe('getSignUpUrl', () => {
-    it('should return a URL', async () => {
-      expect(await getSignUpUrl()).toMatch(/^https:\/\/api\.workos\.com/);
+    it('returns a URL and a PKCE Set-Cookie header', async () => {
+      const result = await getSignUpUrl();
+      expect(result.url).toMatch(/^https:\/\/api\.workos\.com/);
+      expect(result.headers['Set-Cookie']).toMatch(/^wos-auth-verifier-/);
       expect(authorizationUrl.getAuthorizationUrl).toHaveBeenCalledWith(
         expect.objectContaining({ screenHint: 'sign-up' }),
       );
@@ -187,36 +201,45 @@ describe('auth', () => {
 
     it('should redirect to authorization URL for SSO_required errors', async () => {
       const authUrl = 'https://api.workos.com/sso/authorize';
+      const pkceHeaders = { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/' };
       const errorWithSSOCause = new Error('SSO Required', {
         cause: { error: 'sso_required' },
       });
 
       refreshSession.mockRejectedValueOnce(errorWithSSOCause);
-      (authorizationUrl.getAuthorizationUrl as jest.Mock).mockResolvedValueOnce(authUrl);
+      (authorizationUrl.getAuthorizationUrl as jest.Mock).mockResolvedValueOnce({
+        url: authUrl,
+        headers: pkceHeaders,
+      });
 
       const result = await switchToOrganization(request, organizationId);
 
       expect(authorizationUrl.getAuthorizationUrl).toHaveBeenCalled();
-      expect(redirect).toHaveBeenCalledWith(authUrl);
+      expect(redirect).toHaveBeenCalledWith(authUrl, { headers: pkceHeaders });
 
       assertIsResponse(result);
       expect(result.status).toBe(302);
       expect(result.headers.get('Location')).toBe(authUrl);
+      expect(result.headers.get('Set-Cookie')).toBe(pkceHeaders['Set-Cookie']);
     });
 
     it('should handle mfa_enrollment errors', async () => {
       const authUrl = 'https://api.workos.com/sso/authorize';
+      const pkceHeaders = { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/' };
       const errorWithMFACause = new Error('MFA Enrollment Required', {
         cause: { error: 'mfa_enrollment' },
       });
 
       refreshSession.mockRejectedValueOnce(errorWithMFACause);
-      (authorizationUrl.getAuthorizationUrl as jest.Mock).mockResolvedValueOnce(authUrl);
+      (authorizationUrl.getAuthorizationUrl as jest.Mock).mockResolvedValueOnce({
+        url: authUrl,
+        headers: pkceHeaders,
+      });
 
       const result = await switchToOrganization(request, organizationId);
 
       expect(authorizationUrl.getAuthorizationUrl).toHaveBeenCalled();
-      expect(redirect).toHaveBeenCalledWith(authUrl);
+      expect(redirect).toHaveBeenCalledWith(authUrl, { headers: pkceHeaders });
 
       assertIsResponse(result);
       expect(result.status).toBe(302);

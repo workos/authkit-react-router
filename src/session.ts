@@ -44,7 +44,8 @@ export async function refreshSession(request: Request, options: { organizationId
   const cookie = request.headers.get('Cookie');
   const session = cookie ? await getSessionFromCookie(cookie) : null;
   if (!session) {
-    throw redirect(await getAuthorizationUrl());
+    const { url, headers } = await getAuthorizationUrl();
+    throw redirect(url, { headers });
   }
 
   try {
@@ -361,10 +362,12 @@ export async function authkitLoader<Data = unknown>(
         const returnPathname = getReturnPathname(request.url);
         const cookieSession = await getSession(request.headers.get('Cookie'));
 
-        throw redirect(await getAuthorizationUrl({ returnPathname }), {
-          headers: {
-            'Set-Cookie': await destroySession(cookieSession),
-          },
+        const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname });
+        throw redirect(url, {
+          headers: [
+            ['Set-Cookie', await destroySession(cookieSession)],
+            ['Set-Cookie', authHeaders['Set-Cookie']],
+          ],
         });
       }
 
@@ -443,10 +446,12 @@ export async function authkitLoader<Data = unknown>(
       }
 
       const returnPathname = getReturnPathname(request.url);
-      throw redirect(await getAuthorizationUrl({ returnPathname }), {
-        headers: {
-          'Set-Cookie': await destroySession(cookieSession),
-        },
+      const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname });
+      throw redirect(url, {
+        headers: [
+          ['Set-Cookie', await destroySession(cookieSession)],
+          ['Set-Cookie', authHeaders['Set-Cookie']],
+        ],
       });
     }
 

@@ -122,7 +122,10 @@ describe('session', () => {
 
     // Reset getAuthorizationUrl mock
     getAuthorizationUrlMock.mockReset();
-    getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize');
+    getAuthorizationUrlMock.mockResolvedValue({
+      url: 'https://auth.workos.com/oauth/authorize',
+      headers: { 'Set-Cookie': 'wos-auth-verifier-default=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+    });
   });
 
   describe('encryptSession', () => {
@@ -309,7 +312,9 @@ describe('session', () => {
           assertIsResponse(response);
           expect(response.status).toBe(302);
           expect(response.headers.get('Location')).toMatch(/^https:\/\/auth\.workos\.com\/oauth/);
-          expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          const setCookies = response.headers.getSetCookie();
+          expect(setCookies).toContain('destroyed-session-cookie');
+          expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-'))).toBe(true);
         }
       });
 
@@ -617,7 +622,10 @@ describe('session', () => {
         authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
 
         // Setup the mock to return a URL with state parameter
-        getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize?state=abc123');
+        getAuthorizationUrlMock.mockResolvedValue({
+          url: 'https://auth.workos.com/oauth/authorize?state=abc123',
+          headers: { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+        });
 
         try {
           const mockRequest = createMockRequest('test-cookie', 'https://app.example.com/dashboard/settings');
@@ -627,7 +635,10 @@ describe('session', () => {
           assertIsResponse(response);
           expect(response.status).toBe(302);
           expect(response.headers.get('Location')).toBe('https://auth.workos.com/oauth/authorize?state=abc123');
-          expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          // The destroy cookie and the new PKCE cookie must both be present
+          const setCookies = response.headers.getSetCookie();
+          expect(setCookies).toContain('destroyed-session-cookie');
+          expect(setCookies).toContain('wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600');
 
           // Verify getAuthorizationUrl was called with the correct returnPathname
           expect(getAuthorizationUrlMock).toHaveBeenCalledWith({

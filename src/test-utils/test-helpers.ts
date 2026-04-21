@@ -1,6 +1,10 @@
 /* istanbul ignore file */
 
 import type { User } from '@workos-inc/node';
+import { sealData } from 'iron-session';
+import { getConfig } from '../config.js';
+import { getPKCECookieNameForState } from '../pkce.js';
+import type { State } from '../interfaces.js';
 
 type SearchParamsModifier = Record<string, string> | ((params: URLSearchParams) => void);
 
@@ -40,6 +44,45 @@ export function createRequestWithSearchParams(request: Request, modifier: Search
  * @param overrides - Any properties to override in the mock response.
  * @returns A mock WorkOS authentication response object.
  */
+/**
+ * Build a sealed PKCE state value and matching Cookie header, the way
+ * `getAuthorizationUrl` would emit them on the outbound redirect.
+ *
+ * Returns `{ sealedState, cookieHeader, codeVerifier }` — pass `sealedState`
+ * as the URL's `state` search param and `cookieHeader` as the inbound
+ * `Cookie` header in the callback request.
+ */
+export async function createSealedState(
+  overrides: Partial<State> = {},
+): Promise<{ sealedState: string; cookieHeader: string; codeVerifier: string }> {
+  const state: State = {
+    nonce: overrides.nonce ?? 'test-nonce',
+    codeVerifier: overrides.codeVerifier ?? 'test-code-verifier',
+    customState: overrides.customState,
+    returnPathname: overrides.returnPathname,
+  };
+  const sealedState = await sealData(state, { password: getConfig('cookiePassword') });
+  const cookieHeader = `${getPKCECookieNameForState(sealedState)}=${sealedState}`;
+  return { sealedState, cookieHeader, codeVerifier: state.codeVerifier };
+}
+
+/**
+ * Mutate an existing Request to include the given `Cookie` header plus the
+ * given search params, returning a fresh Request instance.
+ */
+export function createRequestWithCookieAndParams(
+  request: Request,
+  cookieHeader: string,
+  modifier: SearchParamsModifier,
+): Request {
+  const next = createRequestWithSearchParams(request, modifier);
+  const headers = new Headers(next.headers);
+  // Append rather than set so callers can stack cookies
+  const existing = headers.get('Cookie');
+  headers.set('Cookie', existing ? `${existing}; ${cookieHeader}` : cookieHeader);
+  return new Request(next.url, { ...next, headers, body: next.body });
+}
+
 export function createAuthWithCodeResponse(overrides: Record<string, unknown> = {}) {
   return {
     accessToken: 'access123',

@@ -1,9 +1,11 @@
 import { getWorkOS } from './workos.js';
 import { authLoader } from './authkit-callback-route.js';
 import {
-  createRequestWithSearchParams,
-  createAuthWithCodeResponse,
   assertIsResponse,
+  createAuthWithCodeResponse,
+  createRequestWithCookieAndParams,
+  createRequestWithSearchParams,
+  createSealedState,
 } from './test-utils/test-helpers.js';
 import { configureSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit } from './utils.js';
@@ -25,6 +27,9 @@ jest.mock('./workos.js', () => ({
 describe('authLoader', () => {
   let loader: ReturnType<typeof authLoader>;
   let request: Request;
+  let sealedState: string;
+  let cookieHeader: string;
+  let codeVerifier: string;
   const workos = getWorkOS();
   const authenticateWithCode = jest.mocked(workos.userManagement.authenticateWithCode);
 
@@ -38,11 +43,14 @@ describe('authLoader', () => {
     const mockAuthResponse = createAuthWithCodeResponse();
     authenticateWithCode.mockResolvedValue(mockAuthResponse);
 
+    ({ sealedState, cookieHeader, codeVerifier } = await createSealedState());
+
     loader = authLoader();
     const url = new URL('http://example.com/callback');
 
-    request = createRequestWithSearchParams(new Request(url), {
+    request = createRequestWithCookieAndParams(new Request(url), cookieHeader, {
       code: 'test-code',
+      state: sealedState,
     });
   });
 
@@ -57,22 +65,71 @@ describe('authLoader', () => {
       expect(response).toBeUndefined();
     });
 
-    it('should handle authentication failure', async () => {
-      authenticateWithCode.mockRejectedValue(new Error('Auth failed'));
-      request = createRequestWithSearchParams(request, { code: 'invalid-code' });
+    it('returns 500 when state is missing', async () => {
+      request = createRequestWithSearchParams(new Request('http://example.com/callback'), {
+        code: 'test-code',
+      });
       const response = (await loader({
         request,
         params: {},
         context: {},
       } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
-      expect(isDataWithResponseInit(response)).toBeTruthy();
 
+      expect(isDataWithResponseInit(response)).toBeTruthy();
       expect(response?.init?.status).toBe(500);
+    });
+
+    it('returns 500 when PKCE cookie is missing (possible CSRF)', async () => {
+      request = createRequestWithSearchParams(new Request('http://example.com/callback'), {
+        code: 'test-code',
+        state: sealedState,
+      });
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
+
+      expect(isDataWithResponseInit(response)).toBeTruthy();
+      expect(response?.init?.status).toBe(500);
+      // Still clears the PKCE cookie even when it wasn't present — harmless and
+      // matches the invariant that the cookie is always cleared post-callback.
+      expect(findSetCookie(response?.init?.headers, 'wos-auth-verifier-')).toMatch(/Max-Age=0/);
+    });
+
+    it('returns 500 when state does not match the PKCE cookie value', async () => {
+      // Valid cookie issued for a different flow
+      const other = await createSealedState({ nonce: 'other' });
+      request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), other.cookieHeader, {
+        code: 'test-code',
+        state: sealedState,
+      });
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
+
+      expect(isDataWithResponseInit(response)).toBeTruthy();
+      expect(response?.init?.status).toBe(500);
+      expect(authenticateWithCode).not.toHaveBeenCalled();
+    });
+
+    it('clears the PKCE cookie on authentication failure', async () => {
+      authenticateWithCode.mockRejectedValue(new Error('Auth failed'));
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
+
+      expect(isDataWithResponseInit(response)).toBeTruthy();
+      expect(response?.init?.status).toBe(500);
+      expect(findSetCookie(response?.init?.headers, 'wos-auth-verifier-')).toMatch(/Max-Age=0/);
     });
 
     it('should handle authentication failure with string error', async () => {
       authenticateWithCode.mockRejectedValue('Auth failed');
-      request = createRequestWithSearchParams(request, { code: 'invalid-code' });
       const response = (await loader({
         request,
         params: {},
@@ -84,6 +141,16 @@ describe('authLoader', () => {
     });
   });
 
+  it('passes the PKCE code verifier to authenticateWithCode', async () => {
+    await loader({ request, params: {}, context: {} } as LoaderFunctionArgs);
+
+    expect(workos.userManagement.authenticateWithCode).toHaveBeenCalledWith({
+      clientId: process.env.WORKOS_CLIENT_ID,
+      code: 'test-code',
+      codeVerifier,
+    });
+  });
+
   it('returns a response when a code is present', async () => {
     const response = await loader({
       request,
@@ -91,14 +158,17 @@ describe('authLoader', () => {
       context: {},
     } as LoaderFunctionArgs);
 
-    expect(workos.userManagement.authenticateWithCode).toHaveBeenCalledWith({
-      clientId: process.env.WORKOS_CLIENT_ID,
-      code: 'test-code',
-    });
-
     assertIsResponse(response);
     expect(response.status).toBe(302);
     expect(response.headers.get('Set-Cookie')).toBeDefined();
+  });
+
+  it('clears the PKCE cookie on successful sign-in', async () => {
+    const response = await loader({ request, params: {}, context: {} } as LoaderFunctionArgs);
+
+    assertIsResponse(response);
+    const setCookies = response.headers.getSetCookie();
+    expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-') && /Max-Age=0/.test(c))).toBe(true);
   });
 
   it('should redirect to the returnPathname', async () => {
@@ -139,17 +209,35 @@ describe('authLoader', () => {
     expect(onSuccess).toHaveBeenCalled();
   });
 
-  it('uses returnPathname from state when provided', async () => {
+  it('uses returnPathname from the sealed state when provided', async () => {
+    const scoped = await createSealedState({ returnPathname: '/profile' });
+    request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), scoped.cookieHeader, {
+      code: 'test-code',
+      state: scoped.sealedState,
+    });
+
     const response = await loader({
-      request: createRequestWithSearchParams(request, {
-        state: btoa(JSON.stringify({ returnPathname: '/profile' })),
-      }),
+      request,
       params: {},
       context: {},
     } as LoaderFunctionArgs);
     assertIsResponse(response);
     expect(response.status).toBe(302);
     expect(response.headers.get('Location')).toBe('http://example.com/profile');
+  });
+
+  it('forwards customState from the sealed state to onSuccess', async () => {
+    const onSuccess = jest.fn();
+    loader = authLoader({ onSuccess });
+
+    const scoped = await createSealedState({ customState: 'caller-state' });
+    request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), scoped.cookieHeader, {
+      code: 'test-code',
+      state: scoped.sealedState,
+    });
+
+    await loader({ request, params: {}, context: {} } as LoaderFunctionArgs);
+    expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ state: 'caller-state' }));
   });
 
   it('provides impersonator to onSuccess callback when provided', async () => {
@@ -207,13 +295,15 @@ describe('authLoader', () => {
     process.env.WORKOS_REDIRECT_URI = 'https://example.com/callback';
 
     try {
-      const request = createRequestWithSearchParams(new Request('http://example.com/callback'), {
+      const scoped = await createSealedState();
+      const req = createRequestWithCookieAndParams(new Request('http://example.com/callback'), scoped.cookieHeader, {
         code: 'test-code-123',
+        state: scoped.sealedState,
       });
 
       const loader = authLoader();
       const response = await loader({
-        request,
+        request: req,
         params: {},
         context: {},
       } as LoaderFunctionArgs);
@@ -242,13 +332,19 @@ describe('authLoader', () => {
     process.env.WORKOS_REDIRECT_URI = 'https://example.com:8443/callback';
 
     try {
-      const request = createRequestWithSearchParams(new Request('http://example.com:3000/callback'), {
-        code: 'test-code-123',
-      });
+      const scoped = await createSealedState();
+      const req = createRequestWithCookieAndParams(
+        new Request('http://example.com:3000/callback'),
+        scoped.cookieHeader,
+        {
+          code: 'test-code-123',
+          state: scoped.sealedState,
+        },
+      );
 
       const loader = authLoader();
       const response = await loader({
-        request,
+        request: req,
         params: {},
         context: {},
       } as LoaderFunctionArgs);
@@ -272,3 +368,9 @@ describe('authLoader', () => {
     }
   });
 });
+
+function findSetCookie(headers: HeadersInit | undefined, prefix: string): string | undefined {
+  if (!headers) return undefined;
+  const h = new Headers(headers);
+  return h.getSetCookie().find((c) => c.startsWith(prefix));
+}

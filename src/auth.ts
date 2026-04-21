@@ -1,14 +1,30 @@
 import { LoaderFunctionArgs, data, redirect } from 'react-router';
 import { getAuthorizationUrl } from './get-authorization-url.js';
 import { getClaimsFromAccessToken, getSessionFromCookie, refreshSession, terminateSession } from './session.js';
-import { NoUserInfo, UserInfo } from './interfaces.js';
+import { GetAuthURLResult, NoUserInfo, UserInfo } from './interfaces.js';
 import { getConfig } from './config.js';
 
-export async function getSignInUrl(returnPathname?: string) {
+/**
+ * Build a sign-in URL and the short-lived PKCE / CSRF cookie that must travel
+ * back to the browser on the redirect.
+ *
+ * @example
+ * const { url, headers } = await getSignInUrl('/dashboard');
+ * return redirect(url, { headers });
+ */
+export async function getSignInUrl(returnPathname?: string): Promise<GetAuthURLResult> {
   return getAuthorizationUrl({ returnPathname, screenHint: 'sign-in' });
 }
 
-export async function getSignUpUrl(returnPathname?: string) {
+/**
+ * Build a sign-up URL and the short-lived PKCE / CSRF cookie that must travel
+ * back to the browser on the redirect.
+ *
+ * @example
+ * const { url, headers } = await getSignUpUrl('/welcome');
+ * return redirect(url, { headers });
+ */
+export async function getSignUpUrl(returnPathname?: string): Promise<GetAuthURLResult> {
   return getAuthorizationUrl({ returnPathname, screenHint: 'sign-up' });
 }
 
@@ -121,7 +137,8 @@ export async function switchToOrganization(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const errorCause: any = error instanceof Error ? error.cause : null;
     if (errorCause?.error === 'sso_required' || errorCause?.error === 'mfa_enrollment') {
-      return redirect(await getAuthorizationUrl({ organizationId }));
+      const { url, headers } = await getAuthorizationUrl({ organizationId });
+      return redirect(url, { headers });
     }
 
     return data(
