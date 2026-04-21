@@ -78,10 +78,18 @@ export function authLoader(options: HandleAuthOptions = {}) {
       // Sanitize each candidate separately so a hostile sealed-state value
       // (e.g. an absolute URL, CRLF smuggle, or encoded traversal) can't
       // erase a legitimate configured default. `sanitizeReturnPathname`
-      // returns '/' on rejection, which we treat as "fall back to the option".
-      const safeFromState = returnPathnameState ? sanitizeReturnPathname(returnPathnameState) : '/';
-      const safeFromOption = sanitizeReturnPathname(returnPathnameOption);
-      const returnPathname = safeFromState !== '/' ? safeFromState : safeFromOption;
+      // collapses both rejection and a legitimate '/' input into the same
+      // '/' result, so we detect rejection by comparing against the raw
+      // input — that way an explicit `returnPathname: '/'` from the caller
+      // still wins over a configured option like `'/dashboard'`.
+      let returnPathname: string;
+      if (returnPathnameState !== undefined) {
+        const sanitizedState = sanitizeReturnPathname(returnPathnameState);
+        const stateWasRejected = sanitizedState === '/' && returnPathnameState !== '/';
+        returnPathname = stateWasRejected ? sanitizeReturnPathname(returnPathnameOption) : sanitizedState;
+      } else {
+        returnPathname = sanitizeReturnPathname(returnPathnameOption);
+      }
 
       // Reconstruct pathname + search + hash together. Using `.pathname = ...`
       // on a raw string with a fragment would percent-encode the `#`, so we

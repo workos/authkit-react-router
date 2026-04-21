@@ -246,6 +246,29 @@ describe('authLoader', () => {
     expect(response.headers.get('Location')).toBe('http://example.com/dashboard');
   });
 
+  it("honors an explicit returnPathname='/' from the sealed state over the configured option", async () => {
+    // The sanitizer collapses rejection and legitimate '/' into the same
+    // result, so the callback must disambiguate by comparing against the
+    // raw input — otherwise a caller who explicitly asks to return home
+    // would be silently redirected to the configured default instead.
+    loader = authLoader({ returnPathname: '/dashboard' });
+    const scoped = await createSealedState({ returnPathname: '/' });
+    request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), scoped.cookieHeader, {
+      code: 'test-code',
+      state: scoped.sealedState,
+    });
+
+    const response = await loader({
+      request,
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
+
+    assertIsResponse(response);
+    expect(response.status).toBe(302);
+    expect(response.headers.get('Location')).toBe('http://example.com/');
+  });
+
   it('rejects a CRLF-smuggled returnPathname in the sealed state', async () => {
     loader = authLoader({ returnPathname: '/dashboard' });
     const scoped = await createSealedState({ returnPathname: '/foo\r\nSet-Cookie: bad' });
