@@ -40,3 +40,17 @@ used to signal breaking changes.
   need to thread it through manually.
 - `switchToOrganization` no longer emits an empty `Set-Cookie: ''` header
   when `refreshSession` returns without one.
+- `signOut` / `terminateSession` now also clears any orphan
+  `wos-auth-verifier-*` cookies left behind by abandoned OAuth flows
+  (tabs closed mid-sign-in, etc.) so they don't accumulate under the
+  browser's per-domain cookie cap.
+
+### Docs
+
+- New **Sign-in endpoint** section documenting the `initiate_login_uri`
+  dashboard setting, including a callout that a configured sign-in
+  endpoint is required for dashboard impersonation to work.
+- New **Troubleshooting** entry for the
+  `Missing required auth parameter` error surfaced when an
+  impersonation flow reaches the callback without routing through the
+  sign-in endpoint.

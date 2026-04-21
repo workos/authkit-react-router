@@ -233,6 +233,52 @@ describe('session', () => {
       expect(getLogoutUrl).not.toHaveBeenCalled();
     });
 
+    it('clears orphan wos-auth-verifier cookies from abandoned OAuth flows', async () => {
+      const mockSession = createMockSession({
+        has: jest.fn().mockReturnValue(true),
+        get: jest.fn().mockReturnValue('encrypted-jwt'),
+      });
+      getSession.mockResolvedValueOnce(mockSession);
+      unsealData.mockResolvedValueOnce({
+        accessToken: 'token.without.sessionid',
+        refreshToken: 'refresh-token',
+        user: { id: 'user-id' },
+        impersonator: null,
+      });
+      (jose.decodeJwt as jest.Mock).mockReturnValueOnce({});
+
+      const request = createMockRequest(
+        'wos-session=value; wos-auth-verifier-aaaaaaaa=sealed1; wos-auth-verifier-bbbbbbbb=sealed2; other=ignored',
+      );
+      const response = await terminateSession(request);
+
+      const setCookies = response.headers.getSetCookie();
+      expect(setCookies).toContain('destroyed-session-cookie');
+      expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-aaaaaaaa=;') && /Max-Age=0/.test(c))).toBe(true);
+      expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-bbbbbbbb=;') && /Max-Age=0/.test(c))).toBe(true);
+      expect(setCookies.every((c) => !c.startsWith('other='))).toBe(true);
+    });
+
+    it('emits no PKCE cleanup headers when no orphan cookies are present', async () => {
+      const mockSession = createMockSession({
+        has: jest.fn().mockReturnValue(true),
+        get: jest.fn().mockReturnValue('encrypted-jwt'),
+      });
+      getSession.mockResolvedValueOnce(mockSession);
+      unsealData.mockResolvedValueOnce({
+        accessToken: 'token.without.sessionid',
+        refreshToken: 'refresh-token',
+        user: { id: 'user-id' },
+        impersonator: null,
+      });
+      (jose.decodeJwt as jest.Mock).mockReturnValueOnce({});
+
+      const response = await terminateSession(createMockRequest('wos-session=value; other=still-ignored'));
+
+      const setCookies = response.headers.getSetCookie();
+      expect(setCookies).toEqual(['destroyed-session-cookie']);
+    });
+
     it('should redirect to WorkOS logout URL when valid session exists', async () => {
       // Setup a session with jwt
       const mockSession = createMockSession({

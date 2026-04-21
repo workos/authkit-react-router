@@ -14,6 +14,7 @@ import { getWorkOS } from './workos.js';
 import { sealData, unsealData } from 'iron-session';
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { getConfig } from './config.js';
+import { getPKCECleanupCookieStrings } from './pkce.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit, isJsonResponse, isRedirect, isResponse } from './utils.js';
 import type { AuthenticationResponse } from '@workos-inc/node';
@@ -536,17 +537,26 @@ async function handleAuthLoader(
 
 export async function terminateSession(request: Request, { returnTo }: { returnTo?: string } = {}) {
   const { getSession, destroySession } = await getSessionStorage();
-  const encryptedSession = await getSession(request.headers.get('Cookie'));
+  const cookieHeader = request.headers.get('Cookie');
+  const encryptedSession = await getSession(cookieHeader);
   const { accessToken } = (await getSessionFromCookie(
-    request.headers.get('Cookie') as string,
+    cookieHeader as string,
     encryptedSession,
   )) as Session;
 
   const { sessionId } = getClaimsFromAccessToken(accessToken);
 
-  const headers = {
+  // Destroy the session cookie plus any orphan `wos-auth-verifier-*` cookies
+  // from abandoned OAuth flows — the per-flow cookie scheme means an
+  // unfinished flow leaves a cookie behind that the browser will keep
+  // sending until its 10-minute Max-Age expires, and stacking enough of
+  // them can exceed the per-domain cookie cap.
+  const headers = new Headers({
     'Set-Cookie': await destroySession(encryptedSession),
-  };
+  });
+  for (const cleanup of getPKCECleanupCookieStrings(cookieHeader, { request })) {
+    headers.append('Set-Cookie', cleanup);
+  }
 
   if (sessionId) {
     return redirect(getWorkOS().userManagement.getLogoutUrl({ sessionId, returnTo }), {

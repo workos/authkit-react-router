@@ -235,6 +235,28 @@ export default function HomePage() {
 > no longer supported — see [Migrating from 0.4.x](#migrating-from-04x)
 > below.
 
+### Sign-in endpoint
+
+The sign-in route above doubles as your **Sign-in endpoint** (also known
+as `initiate_login_uri`) — the URL WorkOS redirects to when it needs to
+start an authentication flow on your app's behalf (for example, when an
+admin impersonates a user from the dashboard, or when a password-reset
+email lands on a device that is not already signed in).
+
+In the [WorkOS dashboard](https://dashboard.workos.com), go to
+**Redirects** and set the **Sign-in endpoint** to the public URL of the
+route (e.g., `http://localhost:5173/login` in development,
+`https://your-app.com/login` in production).
+
+> [!IMPORTANT]
+> A configured Sign-in endpoint is required for
+> [impersonation](https://workos.com/docs/user-management/impersonation)
+> to work. Without it, WorkOS-initiated flows (such as impersonating a
+> user from the dashboard) redirect directly to your callback URL
+> without a `state` parameter and fail the PKCE/CSRF verification this
+> library enforces on every callback, surfacing as a
+> `Missing required auth parameter` error.
+
 ### Requiring auth
 
 For pages where a signed-in user is mandatory, you can use the `ensureSignedIn` option:
@@ -537,6 +559,21 @@ export const loader = (args) =>
 > When deploying to serverless environments like AWS Lambda, ensure you pass the same storage configuration to both your main routes and the callback route to handle cold starts properly.
 
 AuthKit works with any session storage that implements React Router's `SessionStorage` interface, including Redis-based or database-backed implementations.
+
+## Troubleshooting
+
+### `Missing required auth parameter` when impersonating from the WorkOS dashboard
+
+This error occurs when WorkOS-initiated flows (such as dashboard
+impersonation) redirect directly to your callback URL without going
+through your application's sign-in flow. Because this library enforces
+PKCE/CSRF verification on every callback, the request is rejected when
+the required `state` parameter is missing.
+
+**Fix:** Configure a [sign-in endpoint](#sign-in-endpoint) in your
+WorkOS dashboard so that impersonation flows route through your app
+first, allowing the PKCE verifier and CSRF state to be set up before
+redirecting to WorkOS.
 
 ## Migrating from 0.4.x
 
