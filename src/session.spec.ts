@@ -837,83 +837,118 @@ describe('session', () => {
       impersonator: null,
     };
 
-    beforeEach(() => {
-      const mockSession = createMockSession({
-        has: jest.fn().mockReturnValue(true),
-        get: jest.fn().mockReturnValue('encrypted-jwt'),
-        set: jest.fn(),
+    type IsolatedModules = {
+      authkitLoader: typeof authkitLoader;
+      createRemoteJWKSet: jest.Mock;
+      jwtVerify: jest.Mock;
+      getJwksUrl: jest.Mock;
+    };
+
+    // Each test gets its own freshly-loaded copy of ./session.js so the
+    // module-level JWKS cache never leaks across tests (or out of this
+    // describe block). This guards against subtle ordering bugs where a later
+    // test would depend on cache state set up here.
+    function loadIsolated(): IsolatedModules {
+      let isolated!: IsolatedModules;
+      jest.isolateModules(() => {
+        /* eslint-disable @typescript-eslint/no-require-imports */
+        const joseModule = require('jose') as typeof import('jose');
+        const workosModule = require('./workos.js') as typeof import('./workos.js');
+        const sessionStorageModule = require('./sessionStorage.js') as typeof import('./sessionStorage.js');
+        const ironSessionModule = require('iron-session') as typeof import('iron-session');
+        const sessionModule = require('./session.js') as typeof import('./session.js');
+        /* eslint-enable @typescript-eslint/no-require-imports */
+
+        const wos = workosModule.getWorkOS();
+        const getJwksUrlMock = wos.userManagement.getJwksUrl as jest.Mock;
+        const createRemoteJWKSetMock = joseModule.createRemoteJWKSet as jest.Mock;
+        const jwtVerifyMock = joseModule.jwtVerify as jest.Mock;
+        const decodeJwtMock = joseModule.decodeJwt as jest.Mock;
+        const getSessionStorageMock = sessionStorageModule.getSessionStorage as jest.Mock;
+        const unsealDataMock = ironSessionModule.unsealData as jest.Mock;
+
+        const isolatedGetSession = jest.fn().mockResolvedValue(
+          createMockSession({
+            has: jest.fn().mockReturnValue(true),
+            get: jest.fn().mockReturnValue('encrypted-jwt'),
+            set: jest.fn(),
+          }),
+        );
+        getSessionStorageMock.mockResolvedValue({
+          cookieName: 'wos-cookie',
+          getSession: isolatedGetSession,
+          destroySession: jest.fn().mockResolvedValue('destroyed-session-cookie'),
+          commitSession: jest.fn(),
+        });
+        unsealDataMock.mockResolvedValue({
+          ...mockSessionData,
+          headers: { 'Set-Cookie': 'session-cookie' },
+        });
+        getJwksUrlMock.mockImplementation((clientId: string) => `https://auth.workos.com/oauth/jwks/${clientId}`);
+        // Real createRemoteJWKSet returns a getKey function used by jwtVerify.
+        // The mock needs to return a truthy value so the module-level cache
+        // check in session.ts treats it as populated.
+        createRemoteJWKSetMock.mockReturnValue(jest.fn());
+        jwtVerifyMock.mockResolvedValue({
+          payload: {},
+          protectedHeader: {},
+          key: new TextEncoder().encode('test-key'),
+        });
+        decodeJwtMock.mockReturnValue({
+          sid: 'test-session-id',
+          org_id: 'org-123',
+          role: 'admin',
+          roles: ['admin'],
+          permissions: ['read', 'write'],
+          entitlements: ['premium'],
+          feature_flags: [],
+        });
+
+        isolated = {
+          authkitLoader: sessionModule.authkitLoader,
+          createRemoteJWKSet: createRemoteJWKSetMock,
+          jwtVerify: jwtVerifyMock,
+          getJwksUrl: getJwksUrlMock,
+        };
       });
-      getSession.mockResolvedValue(mockSession);
-      unsealData.mockResolvedValue({
-        ...mockSessionData,
-        headers: { 'Set-Cookie': 'session-cookie' },
-      });
-      // Real createRemoteJWKSet returns a getKey function used by jwtVerify.
-      // The mock needs to return a truthy value so the module-level cache
-      // check in session.ts treats it as populated.
-      (jose.createRemoteJWKSet as jest.Mock).mockReturnValue(jest.fn());
-      jwtVerify.mockResolvedValue({
-        payload: {},
-        protectedHeader: {},
-        key: new TextEncoder().encode('test-key'),
-      } as jose.JWTVerifyResult & jose.ResolvedKey<jose.KeyLike>);
-      (jose.decodeJwt as jest.Mock).mockReturnValue({
-        sid: 'test-session-id',
-        org_id: 'org-123',
-        role: 'admin',
-        roles: ['admin'],
-        permissions: ['read', 'write'],
-        entitlements: ['premium'],
-        feature_flags: [],
-      });
-    });
+      return isolated;
+    }
 
     it('reuses the cached JWKS instance across multiple verifyAccessToken calls', async () => {
-      const createRemoteJWKSetMock = jose.createRemoteJWKSet as jest.Mock;
+      const { authkitLoader, createRemoteJWKSet, jwtVerify } = loadIsolated();
 
-      // Ensure the module-scoped cache is populated (it may already be from an
-      // earlier test in this file; either way this call guarantees it). After
-      // this point, any subsequent verifyAccessToken must NOT invoke
-      // createRemoteJWKSet again for the same JWKS URL.
+      // Prime the module-scoped cache.
       await authkitLoader(createLoaderArgs(new Request('http://example.com/a', { headers: { Cookie: 'cookie' } })));
-      createRemoteJWKSetMock.mockClear();
+      createRemoteJWKSet.mockClear();
 
       await authkitLoader(createLoaderArgs(new Request('http://example.com/b', { headers: { Cookie: 'cookie' } })));
       await authkitLoader(createLoaderArgs(new Request('http://example.com/c', { headers: { Cookie: 'cookie' } })));
       await authkitLoader(createLoaderArgs(new Request('http://example.com/d', { headers: { Cookie: 'cookie' } })));
 
       expect(jwtVerify).toHaveBeenCalled();
-      expect(createRemoteJWKSetMock).not.toHaveBeenCalled();
+      expect(createRemoteJWKSet).not.toHaveBeenCalled();
     });
 
     it('rebuilds the JWKS instance when the JWKS URL changes', async () => {
-      const createRemoteJWKSetMock = jose.createRemoteJWKSet as jest.Mock;
-      const getJwksUrl = workos.userManagement.getJwksUrl as jest.Mock;
-      const originalImpl = getJwksUrl.getMockImplementation();
+      const { authkitLoader, createRemoteJWKSet, getJwksUrl } = loadIsolated();
 
-      try {
-        // Populate the cache with the default URL.
-        await authkitLoader(createLoaderArgs(new Request('http://example.com/a', { headers: { Cookie: 'cookie' } })));
-        createRemoteJWKSetMock.mockClear();
+      // Populate the cache with the default URL.
+      await authkitLoader(createLoaderArgs(new Request('http://example.com/a', { headers: { Cookie: 'cookie' } })));
+      createRemoteJWKSet.mockClear();
 
-        // Same URL → no rebuild.
-        await authkitLoader(createLoaderArgs(new Request('http://example.com/b', { headers: { Cookie: 'cookie' } })));
-        expect(createRemoteJWKSetMock).not.toHaveBeenCalled();
+      // Same URL → no rebuild.
+      await authkitLoader(createLoaderArgs(new Request('http://example.com/b', { headers: { Cookie: 'cookie' } })));
+      expect(createRemoteJWKSet).not.toHaveBeenCalled();
 
-        // URL changes (e.g. consumer re-configures with a different clientId) →
-        // the cache must be invalidated and a new JWKS instance created.
-        getJwksUrl.mockImplementation(() => 'https://auth.workos.com/oauth/jwks/other-client');
-        await authkitLoader(createLoaderArgs(new Request('http://example.com/c', { headers: { Cookie: 'cookie' } })));
-        expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);
+      // URL changes (e.g. consumer re-configures with a different clientId) →
+      // the cache must be invalidated and a new JWKS instance created.
+      getJwksUrl.mockImplementation(() => 'https://auth.workos.com/oauth/jwks/other-client');
+      await authkitLoader(createLoaderArgs(new Request('http://example.com/c', { headers: { Cookie: 'cookie' } })));
+      expect(createRemoteJWKSet).toHaveBeenCalledTimes(1);
 
-        // Still the same new URL → still cached.
-        await authkitLoader(createLoaderArgs(new Request('http://example.com/d', { headers: { Cookie: 'cookie' } })));
-        expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);
-      } finally {
-        if (originalImpl) {
-          getJwksUrl.mockImplementation(originalImpl);
-        }
-      }
+      // Still the same new URL → still cached.
+      await authkitLoader(createLoaderArgs(new Request('http://example.com/d', { headers: { Cookie: 'cookie' } })));
+      expect(createRemoteJWKSet).toHaveBeenCalledTimes(1);
     });
   });
 
