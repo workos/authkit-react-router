@@ -851,13 +851,13 @@ describe('session', () => {
     function loadIsolated(): IsolatedModules {
       let isolated!: IsolatedModules;
       jest.isolateModules(() => {
-        /* eslint-disable @typescript-eslint/no-require-imports */
+        /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
         const joseModule = require('jose') as typeof import('jose');
         const workosModule = require('./workos.js') as typeof import('./workos.js');
         const sessionStorageModule = require('./sessionStorage.js') as typeof import('./sessionStorage.js');
         const ironSessionModule = require('iron-session') as typeof import('iron-session');
         const sessionModule = require('./session.js') as typeof import('./session.js');
-        /* eslint-enable @typescript-eslint/no-require-imports */
+        /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 
         const wos = workosModule.getWorkOS();
         const getJwksUrlMock = wos.userManagement.getJwksUrl as jest.Mock;
