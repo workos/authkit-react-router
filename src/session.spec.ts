@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { LoaderFunctionArgs, Session as ReactRouterSession, redirect } from 'react-router';
 import { AuthenticationResponse, type User } from '@workos-inc/node';
 import * as ironSession from 'iron-session';
@@ -850,14 +851,17 @@ describe('session', () => {
     // test would depend on cache state set up here.
     function loadIsolated(): IsolatedModules {
       let isolated!: IsolatedModules;
+      // jest.isolateModules only scopes synchronous CJS require() calls; a
+      // dynamic `await import()` would need --experimental-vm-modules. Use
+      // createRequire to avoid a bare `require` keyword in source while still
+      // participating in Jest's module loader hooks.
+      const isolatedRequire = createRequire(__filename);
       jest.isolateModules(() => {
-        /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
-        const joseModule = require('jose') as typeof import('jose');
-        const workosModule = require('./workos.js') as typeof import('./workos.js');
-        const sessionStorageModule = require('./sessionStorage.js') as typeof import('./sessionStorage.js');
-        const ironSessionModule = require('iron-session') as typeof import('iron-session');
-        const sessionModule = require('./session.js') as typeof import('./session.js');
-        /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
+        const joseModule = isolatedRequire('jose') as typeof import('jose');
+        const workosModule = isolatedRequire('./workos.js') as typeof import('./workos.js');
+        const sessionStorageModule = isolatedRequire('./sessionStorage.js') as typeof import('./sessionStorage.js');
+        const ironSessionModule = isolatedRequire('iron-session') as typeof import('iron-session');
+        const sessionModule = isolatedRequire('./session.js') as typeof import('./session.js');
 
         const wos = workosModule.getWorkOS();
         const getJwksUrlMock = wos.userManagement.getJwksUrl as jest.Mock;
