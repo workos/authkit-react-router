@@ -66,10 +66,6 @@ describe('authLoader', () => {
     });
 
     it('clears the PKCE cookie when WorkOS returns an error callback without a code', async () => {
-      // Simulates `?error=access_denied&state=sealedState` — WorkOS error
-      // callbacks reach us with `state` but no `code`. The PKCE verifier
-      // cookie should be cleared so an abandoned flow doesn't linger in
-      // the browser until its 10-minute TTL expires.
       request = createRequestWithSearchParams(new Request('http://example.com/callback'), {
         state: 'sealed-state',
         error: 'access_denied',
@@ -268,10 +264,6 @@ describe('authLoader', () => {
   });
 
   it("honors an explicit returnPathname='/' from the sealed state over the configured option", async () => {
-    // The sanitizer collapses rejection and legitimate '/' into the same
-    // result, so the callback must disambiguate by comparing against the
-    // raw input — otherwise a caller who explicitly asks to return home
-    // would be silently redirected to the configured default instead.
     loader = authLoader({ returnPathname: '/dashboard' });
     const scoped = await createSealedState({ returnPathname: '/' });
     request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), scoped.cookieHeader, {

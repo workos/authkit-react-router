@@ -139,14 +139,10 @@ export function readPKCECookie(cookieHeader: string | null, state: string): stri
 }
 
 /**
- * Build one `Set-Cookie: <name>=; Max-Age=0` string for every PKCE verifier
- * cookie present on the incoming request. Used on sign-out so abandoned
- * flows (tabs closed mid-OAuth, browser killed before the callback, etc.)
- * don't leave orphan `wos-auth-verifier-<hash>` cookies accumulating under
- * the browser's per-domain cookie cap.
- *
- * Returns an empty array when no PKCE cookies are present, so callers can
- * compose the result into a `Set-Cookie` array without a length check.
+ * Build a `Set-Cookie: <name>=; Max-Age=0` string for every PKCE verifier
+ * cookie on the incoming request. Used on sign-out so abandoned flows
+ * (tabs closed mid-OAuth, etc.) don't leave orphan `wos-auth-verifier-*`
+ * cookies accumulating under the browser's per-domain cookie cap.
  */
 export function getPKCECleanupCookieStrings(
   cookieHeader: string | null,
@@ -160,15 +156,14 @@ export function getPKCECleanupCookieStrings(
     const eq = trimmed.indexOf('=');
     if (eq <= 0) continue;
     const name = trimmed.slice(0, eq);
-    // Include the bare legacy name and every per-flow variant (current
-    // scheme uses `-<hash>`; guard the prefix form in case the scheme
-    // ever changes).
+    // Match both the bare constant and every per-flow `-<hash>` variant,
+    // in case the naming scheme ever changes.
     if (name === PKCE_COOKIE_NAME || name.startsWith(`${PKCE_COOKIE_NAME}-`)) {
       names.add(name);
     }
   }
 
-  const secure = resolveSecure({ ...options });
+  const secure = resolveSecure(options);
   return Array.from(names).map((name) => {
     const parts = [`${name}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
     if (secure) parts.push('Secure');

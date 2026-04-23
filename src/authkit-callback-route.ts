@@ -7,16 +7,6 @@ import { encryptSession } from './session.js';
 import { configureSessionStorage } from './sessionStorage.js';
 import { getWorkOS } from './workos.js';
 
-/**
- * Build a `Set-Cookie` header that clears the PKCE cookie associated with a
- * given sealed state value. PKCE cookies are single-use — we always clear
- * them, whether the exchange succeeded or failed, to prevent replays and
- * stale cookies affecting future auth attempts.
- */
-function clearPKCECookie(state: string, request: Request): string {
-  return getPKCECookieString(state, { expired: true, request });
-}
-
 export function authLoader(options: HandleAuthOptions = {}) {
   return async function loader({ request }: LoaderFunctionArgs) {
     const { storage, cookie, returnPathname: returnPathnameOption = '/', onSuccess } = options;
@@ -28,12 +18,10 @@ export function authLoader(options: HandleAuthOptions = {}) {
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
 
-    // We always want to clear the PKCE cookie at the end of this handler,
-    // success or failure. `pkceClearCookie` is populated as soon as we know
-    // the state value and appended to every response below — including
-    // early exits for WorkOS error callbacks (`?error=…&state=…`) that
-    // would otherwise leave an orphan verifier cookie in the browser.
-    const pkceClearCookie = state ? clearPKCECookie(state, request) : null;
+    // Cleared on every exit (success, failure, and WorkOS error callbacks
+    // where `?error=…&state=…` arrives with no code) so abandoned flows
+    // don't leave orphan verifier cookies until their 10-minute TTL expires.
+    const pkceClearCookie = state ? getPKCECookieString(state, { expired: true, request }) : null;
 
     if (!code) {
       if (pkceClearCookie) {
@@ -80,13 +68,9 @@ export function authLoader(options: HandleAuthOptions = {}) {
       url.searchParams.delete('code');
       url.searchParams.delete('state');
 
-      // Sanitize each candidate separately so a hostile sealed-state value
-      // (e.g. an absolute URL, CRLF smuggle, or encoded traversal) can't
-      // erase a legitimate configured default. `sanitizeReturnPathname`
-      // collapses both rejection and a legitimate '/' input into the same
-      // '/' result, so we detect rejection by comparing against the raw
-      // input — that way an explicit `returnPathname: '/'` from the caller
-      // still wins over a configured option like `'/dashboard'`.
+      // `sanitizeReturnPathname` maps both rejection and a legitimate '/'
+      // to '/'; disambiguate by comparing to the raw input so an explicit
+      // '/' from the caller still beats the configured option.
       let returnPathname: string;
       if (returnPathnameState !== undefined) {
         const sanitizedState = sanitizeReturnPathname(returnPathnameState);
