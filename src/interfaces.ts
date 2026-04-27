@@ -1,5 +1,6 @@
 import type { SessionStorage, SessionIdStorageStrategy, data, SessionData } from 'react-router';
-import type { OauthTokens, User } from '@workos-inc/node';
+import type { AuthenticationResponse, OauthTokens, User } from '@workos-inc/node';
+import * as v from 'valibot';
 
 export type DataWithResponseInit<T> = ReturnType<typeof data<T>>;
 
@@ -26,6 +27,8 @@ export interface AuthLoaderSuccessData {
   refreshToken: string;
   user: User;
   organizationId: string | null;
+  authenticationMethod?: AuthenticationResponse['authenticationMethod'];
+  state?: string;
 }
 
 export interface RefreshErrorOptions {
@@ -93,7 +96,58 @@ export interface NoUserInfo {
 export interface GetAuthURLOptions {
   screenHint?: 'sign-up' | 'sign-in';
   returnPathname?: string;
+  organizationId?: string;
+  redirectUri?: string;
+  loginHint?: string;
+  prompt?: 'consent';
+  /**
+   * Custom state value echoed back to `onSuccess` after a successful callback.
+   * The library always generates its own internal OAuth `state` parameter so
+   * that PKCE and CSRF protection cannot be bypassed — this value is sealed
+   * alongside it for round-trip delivery only.
+   */
+  state?: string;
+  /**
+   * The incoming `Request`, if available. When provided the PKCE cookie's
+   * `Secure` attribute is derived from the live request protocol rather than
+   * the configured `redirectUri` — necessary so local dev on `http://` with
+   * a `https://` redirect URI still sets a cookie the browser will keep.
+   */
+  request?: Request;
 }
+
+/**
+ * Result of building an authorization URL. The caller must attach `headers`
+ * to whatever redirect response they return so the short-lived PKCE /
+ * CSRF-binding cookie is set on the browser before WorkOS redirects back.
+ *
+ * The concrete `{ 'Set-Cookie': string }` shape is still assignable to
+ * `HeadersInit` (via `Record<string, string>`), so callers can spread it
+ * directly into a `new Headers({ ...headers, 'Cache-Control': 'no-store' })`
+ * or pass it straight to `redirect(url, { headers })`.
+ *
+ * @example
+ * const { url, headers } = await getSignInUrl('/dashboard', request);
+ * return redirect(url, { headers });
+ */
+export interface GetAuthURLResult {
+  url: string;
+  headers: { 'Set-Cookie': string };
+}
+
+/**
+ * Sealed state stored in the PKCE cookie and round-tripped through WorkOS as
+ * the OAuth `state` parameter. `codeVerifier` is the PKCE secret that binds
+ * the authorization code to this browser session.
+ */
+export const StateSchema = v.object({
+  nonce: v.string(),
+  customState: v.optional(v.string()),
+  returnPathname: v.optional(v.string()),
+  codeVerifier: v.string(),
+});
+
+export type State = v.InferOutput<typeof StateSchema>;
 
 export type AuthKitLoaderOptions = {
   ensureSignedIn?: boolean;

@@ -122,7 +122,10 @@ describe('session', () => {
 
     // Reset getAuthorizationUrl mock
     getAuthorizationUrlMock.mockReset();
-    getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize');
+    getAuthorizationUrlMock.mockResolvedValue({
+      url: 'https://auth.workos.com/oauth/authorize',
+      headers: { 'Set-Cookie': 'wos-auth-verifier-default=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+    });
   });
 
   describe('encryptSession', () => {
@@ -230,6 +233,52 @@ describe('session', () => {
       expect(getLogoutUrl).not.toHaveBeenCalled();
     });
 
+    it('clears orphan wos-auth-verifier cookies from abandoned OAuth flows', async () => {
+      const mockSession = createMockSession({
+        has: jest.fn().mockReturnValue(true),
+        get: jest.fn().mockReturnValue('encrypted-jwt'),
+      });
+      getSession.mockResolvedValueOnce(mockSession);
+      unsealData.mockResolvedValueOnce({
+        accessToken: 'token.without.sessionid',
+        refreshToken: 'refresh-token',
+        user: { id: 'user-id' },
+        impersonator: null,
+      });
+      (jose.decodeJwt as jest.Mock).mockReturnValueOnce({});
+
+      const request = createMockRequest(
+        'wos-session=value; wos-auth-verifier-aaaaaaaa=sealed1; wos-auth-verifier-bbbbbbbb=sealed2; other=ignored',
+      );
+      const response = await terminateSession(request);
+
+      const setCookies = response.headers.getSetCookie();
+      expect(setCookies).toContain('destroyed-session-cookie');
+      expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-aaaaaaaa=;') && /Max-Age=0/.test(c))).toBe(true);
+      expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-bbbbbbbb=;') && /Max-Age=0/.test(c))).toBe(true);
+      expect(setCookies.every((c) => !c.startsWith('other='))).toBe(true);
+    });
+
+    it('emits no PKCE cleanup headers when no orphan cookies are present', async () => {
+      const mockSession = createMockSession({
+        has: jest.fn().mockReturnValue(true),
+        get: jest.fn().mockReturnValue('encrypted-jwt'),
+      });
+      getSession.mockResolvedValueOnce(mockSession);
+      unsealData.mockResolvedValueOnce({
+        accessToken: 'token.without.sessionid',
+        refreshToken: 'refresh-token',
+        user: { id: 'user-id' },
+        impersonator: null,
+      });
+      (jose.decodeJwt as jest.Mock).mockReturnValueOnce({});
+
+      const response = await terminateSession(createMockRequest('wos-session=value; other=still-ignored'));
+
+      const setCookies = response.headers.getSetCookie();
+      expect(setCookies).toEqual(['destroyed-session-cookie']);
+    });
+
     it('should redirect to WorkOS logout URL when valid session exists', async () => {
       // Setup a session with jwt
       const mockSession = createMockSession({
@@ -309,7 +358,9 @@ describe('session', () => {
           assertIsResponse(response);
           expect(response.status).toBe(302);
           expect(response.headers.get('Location')).toMatch(/^https:\/\/auth\.workos\.com\/oauth/);
-          expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          const setCookies = response.headers.getSetCookie();
+          expect(setCookies).toContain('destroyed-session-cookie');
+          expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-'))).toBe(true);
         }
       });
 
@@ -403,6 +454,16 @@ describe('session', () => {
         const jsonSpy = jest.spyOn(Response.prototype, 'json');
         expect(jsonSpy).not.toHaveBeenCalled();
         jsonSpy.mockRestore();
+      });
+
+      it('validates the access token issuer claim against https://api.workos.com', async () => {
+        await authkitLoader(createLoaderArgs(createMockRequest()));
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[0]).toBe('valid.jwt.token');
+          expect(call[2]).toEqual({ issuer: 'https://api.workos.com' });
+        }
       });
 
       it('should return authorized data with session claims', async () => {
@@ -617,7 +678,10 @@ describe('session', () => {
         authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
 
         // Setup the mock to return a URL with state parameter
-        getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize?state=abc123');
+        getAuthorizationUrlMock.mockResolvedValue({
+          url: 'https://auth.workos.com/oauth/authorize?state=abc123',
+          headers: { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+        });
 
         try {
           const mockRequest = createMockRequest('test-cookie', 'https://app.example.com/dashboard/settings');
@@ -627,12 +691,19 @@ describe('session', () => {
           assertIsResponse(response);
           expect(response.status).toBe(302);
           expect(response.headers.get('Location')).toBe('https://auth.workos.com/oauth/authorize?state=abc123');
-          expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          // The destroy cookie and the new PKCE cookie must both be present
+          const setCookies = response.headers.getSetCookie();
+          expect(setCookies).toContain('destroyed-session-cookie');
+          expect(setCookies).toContain('wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600');
 
           // Verify getAuthorizationUrl was called with the correct returnPathname
-          expect(getAuthorizationUrlMock).toHaveBeenCalledWith({
-            returnPathname: '/dashboard/settings',
-          });
+          // and the request is threaded through for Secure-attribute detection.
+          expect(getAuthorizationUrlMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+              returnPathname: '/dashboard/settings',
+              request: expect.any(Request),
+            }),
+          );
         }
       });
 

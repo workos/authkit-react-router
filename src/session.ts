@@ -14,6 +14,7 @@ import { getWorkOS } from './workos.js';
 import { sealData, unsealData } from 'iron-session';
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { getConfig } from './config.js';
+import { getPKCECleanupCookieStrings } from './pkce.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit, isJsonResponse, isRedirect, isResponse } from './utils.js';
 import type { AuthenticationResponse } from '@workos-inc/node';
@@ -44,7 +45,8 @@ export async function refreshSession(request: Request, options: { organizationId
   const cookie = request.headers.get('Cookie');
   const session = cookie ? await getSessionFromCookie(cookie) : null;
   if (!session) {
-    throw redirect(await getAuthorizationUrl());
+    const { url, headers } = await getAuthorizationUrl({ request });
+    throw redirect(url, { headers });
   }
 
   try {
@@ -361,10 +363,12 @@ export async function authkitLoader<Data = unknown>(
         const returnPathname = getReturnPathname(request.url);
         const cookieSession = await getSession(request.headers.get('Cookie'));
 
-        throw redirect(await getAuthorizationUrl({ returnPathname }), {
-          headers: {
-            'Set-Cookie': await destroySession(cookieSession),
-          },
+        const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
+        throw redirect(url, {
+          headers: [
+            ['Set-Cookie', await destroySession(cookieSession)],
+            ['Set-Cookie', authHeaders['Set-Cookie']],
+          ],
         });
       }
 
@@ -443,10 +447,12 @@ export async function authkitLoader<Data = unknown>(
       }
 
       const returnPathname = getReturnPathname(request.url);
-      throw redirect(await getAuthorizationUrl({ returnPathname }), {
-        headers: {
-          'Set-Cookie': await destroySession(cookieSession),
-        },
+      const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
+      throw redirect(url, {
+        headers: [
+          ['Set-Cookie', await destroySession(cookieSession)],
+          ['Set-Cookie', authHeaders['Set-Cookie']],
+        ],
       });
     }
 
@@ -531,17 +537,23 @@ async function handleAuthLoader(
 
 export async function terminateSession(request: Request, { returnTo }: { returnTo?: string } = {}) {
   const { getSession, destroySession } = await getSessionStorage();
-  const encryptedSession = await getSession(request.headers.get('Cookie'));
-  const { accessToken } = (await getSessionFromCookie(
-    request.headers.get('Cookie') as string,
-    encryptedSession,
-  )) as Session;
+  const cookieHeader = request.headers.get('Cookie');
+  const encryptedSession = await getSession(cookieHeader);
+  const { accessToken } = (await getSessionFromCookie(cookieHeader as string, encryptedSession)) as Session;
 
   const { sessionId } = getClaimsFromAccessToken(accessToken);
 
-  const headers = {
+  // Destroy the session cookie plus any orphan `wos-auth-verifier-*` cookies
+  // from abandoned OAuth flows — the per-flow cookie scheme means an
+  // unfinished flow leaves a cookie behind that the browser will keep
+  // sending until its 10-minute Max-Age expires, and stacking enough of
+  // them can exceed the per-domain cookie cap.
+  const headers = new Headers({
     'Set-Cookie': await destroySession(encryptedSession),
-  };
+  });
+  for (const cleanup of getPKCECleanupCookieStrings(cookieHeader, { request })) {
+    headers.append('Set-Cookie', cleanup);
+  }
 
   if (sessionId) {
     return redirect(getWorkOS().userManagement.getLogoutUrl({ sessionId, returnTo }), {
@@ -595,10 +607,22 @@ export async function getSessionFromCookie(cookie: string, session?: SessionData
   }
 }
 
+// WorkOS access tokens carry a fixed `iss` claim regardless of environment
+// or client id; see
+// https://workos.com/docs/reference/user-management/session-tokens/access-token.
+// Validating it defends against tokens signed by a different WorkOS project
+// whose JWKS happens to resolve to the same keys, and matches the team's
+// "always validate iss" JWT rule.
+//
+// WorkOS access tokens do not carry a standard `aud` claim — the target
+// client is encoded as `client_id` instead — so we do not pass `audience`
+// to jwtVerify here; doing so would reject every token.
+const WORKOS_JWT_ISSUER = 'https://api.workos.com';
+
 async function verifyAccessToken(accessToken: string) {
   const JWKS = createRemoteJWKSet(new URL(getWorkOS().userManagement.getJwksUrl(getConfig('clientId'))));
   try {
-    await jwtVerify(accessToken, JWKS);
+    await jwtVerify(accessToken, JWKS, { issuer: WORKOS_JWT_ISSUER });
     return true;
   } catch (e) {
     return false;
