@@ -9,6 +9,8 @@ used to signal breaking changes.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-27
+
 ### Added
 
 - **PKCE + CSRF protection** on the authorization-code flow. Each sign-in /
