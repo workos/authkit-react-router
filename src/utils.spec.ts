@@ -14,6 +14,16 @@ describe('utils', () => {
       expect(lazyFn()).toBe('test');
       expect(fn).toHaveBeenCalledTimes(1);
     });
+
+    it('should pass arguments only to the first call', () => {
+      const fn = jest.fn((value: string) => value.toUpperCase());
+      const lazyFn = lazy(fn);
+
+      expect(lazyFn('first')).toBe('FIRST');
+      expect(lazyFn('second')).toBe('FIRST');
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(fn).toHaveBeenCalledWith('first');
+    });
   });
 
   describe('isRedirect', () => {

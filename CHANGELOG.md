@@ -9,6 +9,18 @@ used to signal breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `getFeatureFlagsRuntimeClient` returns a shared WorkOS Feature Flags runtime
+  client for server-side flag evaluation.
+- `authkitLoader` can now populate `auth.featureFlags` from a Feature Flags
+  runtime client via the `featureFlags.runtimeClient` option.
+
+### Changed
+
+- Minimum `@workos-inc/node` is now `^8.13.0` for the Feature Flags runtime
+  client APIs.
+
 ## [0.11.0] - 2026-04-27
 
 ### Added

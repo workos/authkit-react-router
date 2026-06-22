@@ -155,6 +155,49 @@ export function App() {
 }
 ```
 
+### Evaluate feature flags
+
+By default, `authkitLoader` reads `featureFlags` from the `feature_flags`
+claim in the WorkOS access token. This is convenient for small flag sets, but
+changes are reflected only after the user's access token refreshes.
+
+Use the Feature Flags runtime client when you need server-side flag evaluation
+that stays in sync independently of the user's session. The runtime client keeps
+flag configuration in memory and syncs changes in the background, so create one
+shared instance per server process rather than one client per request.
+
+```tsx
+import { type LoaderFunctionArgs, useLoaderData } from 'react-router';
+import { authkitLoader, getFeatureFlagsRuntimeClient } from '@workos-inc/authkit-react-router';
+
+const featureFlags = getFeatureFlagsRuntimeClient();
+
+export const loader = (args: LoaderFunctionArgs) =>
+  authkitLoader(args, {
+    featureFlags: {
+      runtimeClient: featureFlags,
+      waitUntilReady: { timeoutMs: 5000 },
+    },
+  });
+
+export function Dashboard() {
+  const { featureFlags } = useLoaderData<typeof loader>();
+  const hasAdvancedAnalytics = featureFlags?.includes('advanced-analytics');
+
+  return hasAdvancedAnalytics ? <AdvancedAnalytics /> : <BasicAnalytics />;
+}
+```
+
+`authkitLoader` evaluates all known flags for the authenticated user and current
+organization, then returns the enabled flag slugs in `auth.featureFlags`. If
+runtime evaluation fails, it falls back to the access token's `feature_flags`
+claim so authentication can continue.
+
+The `getFeatureFlagsRuntimeClient` helper returns the same runtime client for
+every call in the current server process. Options passed to
+`getFeatureFlagsRuntimeClient(options)` are only used when the client is created
+for the first time.
+
 ### Sign-in and sign-up routes
 
 `getSignInUrl` and `getSignUpUrl` return a `{ url, headers }` pair. The

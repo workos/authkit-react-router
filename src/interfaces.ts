@@ -1,5 +1,5 @@
 import type { SessionStorage, SessionIdStorageStrategy, data, SessionData } from 'react-router';
-import type { AuthenticationResponse, OauthTokens, User } from '@workos-inc/node';
+import type { AuthenticationResponse, FeatureFlagsRuntimeClient, OauthTokens, User } from '@workos-inc/node';
 import * as v from 'valibot';
 
 export type DataWithResponseInit<T> = ReturnType<typeof data<T>>;
@@ -42,6 +42,11 @@ export interface RefreshSuccessOptions {
   user: User;
   impersonator: Impersonator | null;
   organizationId: string | null;
+}
+
+export interface AuthKitFeatureFlagsOptions {
+  runtimeClient: FeatureFlagsRuntimeClient;
+  waitUntilReady?: boolean | { timeoutMs?: number };
 }
 
 export interface Impersonator {
@@ -152,6 +157,7 @@ export type State = v.InferOutput<typeof StateSchema>;
 export type AuthKitLoaderOptions = {
   ensureSignedIn?: boolean;
   debug?: boolean;
+  featureFlags?: AuthKitFeatureFlagsOptions;
   onSessionRefreshError?: (options: RefreshErrorOptions) => void | Response | Promise<void | Response>;
   onSessionRefreshSuccess?: (options: RefreshSuccessOptions) => void | Promise<void>;
 } & (
