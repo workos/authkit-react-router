@@ -188,10 +188,24 @@ export function Dashboard() {
 }
 ```
 
-`authkitLoader` evaluates all known flags for the authenticated user and current
-organization, then returns the enabled flag slugs in `auth.featureFlags`. If
-runtime evaluation fails, it falls back to the access token's `feature_flags`
-claim so authentication can continue.
+After opting in, downstream route code can continue reading
+`auth.featureFlags` as before, but the values normally come from the runtime
+client instead of the JWT. The JWT claim is used only as a fallback if runtime
+evaluation fails.
+
+#### Source of `auth.featureFlags`
+
+`authkitLoader` preserves the existing token-based behavior unless you opt in to
+the runtime client:
+
+- Without `featureFlags.runtimeClient`, `auth.featureFlags` is read from the
+  access token's `feature_flags` claim.
+- With `featureFlags.runtimeClient`, `auth.featureFlags` is evaluated by the
+  runtime client using the signed-in user's `userId` and current
+  `organizationId`.
+- If runtime evaluation fails, `authkitLoader` falls back to the access token's
+  `feature_flags` claim so authentication can continue. When `debug: true` is
+  enabled, this fallback emits a warning.
 
 The `getFeatureFlagsRuntimeClient` helper returns the same runtime client for
 every call in the current server process. Options passed to
