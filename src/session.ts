@@ -6,6 +6,7 @@ import type {
   AuthKitLoaderOptions,
   AuthorizedData,
   DataWithResponseInit,
+  FeatureFlagsErrorOptions,
   Session,
   UnauthorizedData,
   UnwrapData,
@@ -342,6 +343,7 @@ export async function authkitLoader<Data = unknown>(
     debug = false,
     onSessionRefreshSuccess,
     onSessionRefreshError,
+    onFeatureFlagsError,
     storage,
     cookie,
     featureFlags: featureFlagsOptions,
@@ -415,9 +417,12 @@ export async function authkitLoader<Data = unknown>(
     const featureFlags = await getFeatureFlags({
       options: featureFlagsOptions,
       tokenFeatureFlags,
+      request,
+      user: session.user,
       userId: session.user?.id,
       organizationId,
       debug,
+      onFeatureFlagsError,
     });
 
     const auth: AuthorizedData = {
@@ -474,15 +479,21 @@ export async function authkitLoader<Data = unknown>(
 async function getFeatureFlags({
   options,
   tokenFeatureFlags,
+  request,
+  user,
   userId,
   organizationId,
   debug,
+  onFeatureFlagsError,
 }: {
   options?: AuthKitFeatureFlagsOptions;
   tokenFeatureFlags: string[];
+  request: Request;
+  user: FeatureFlagsErrorOptions['user'];
   userId?: string;
   organizationId: string | null;
   debug: boolean;
+  onFeatureFlagsError?: (options: FeatureFlagsErrorOptions) => void | Promise<void>;
 }) {
   if (!options) {
     return tokenFeatureFlags;
@@ -505,6 +516,23 @@ async function getFeatureFlags({
       .filter(([, enabled]) => enabled)
       .map(([flag]) => flag);
   } catch (error) {
+    if (onFeatureFlagsError) {
+      try {
+        await onFeatureFlagsError({
+          error,
+          request,
+          user,
+          organizationId,
+          tokenFeatureFlags,
+        });
+      } catch (callbackError) {
+        // istanbul ignore next
+        if (debug) {
+          console.warn('[AuthKit] Feature flags error callback failed.', callbackError);
+        }
+      }
+    }
+
     // istanbul ignore next
     if (debug) {
       console.warn(

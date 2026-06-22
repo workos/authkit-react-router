@@ -15,6 +15,8 @@ used to signal breaking changes.
   client for server-side flag evaluation.
 - `authkitLoader` can now populate `auth.featureFlags` from a Feature Flags
   runtime client via the `featureFlags.runtimeClient` option.
+- `authkitLoader` now supports `onFeatureFlagsError` for reporting runtime
+  feature-flag evaluation failures before falling back to JWT claims.
 
 ### Changed
 

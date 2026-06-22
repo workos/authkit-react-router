@@ -178,6 +178,9 @@ export const loader = (args: LoaderFunctionArgs) =>
       runtimeClient: featureFlags,
       waitUntilReady: { timeoutMs: 5000 },
     },
+    onFeatureFlagsError: ({ error }) => {
+      console.error('Feature flags runtime client failed:', error);
+    },
   });
 
 export function Dashboard() {
@@ -204,8 +207,9 @@ the runtime client:
   runtime client using the signed-in user's `userId` and current
   `organizationId`.
 - If runtime evaluation fails, `authkitLoader` falls back to the access token's
-  `feature_flags` claim so authentication can continue. When `debug: true` is
-  enabled, this fallback emits a warning.
+  `feature_flags` claim so authentication can continue. Use
+  `onFeatureFlagsError` to report this fallback to your monitoring system. When
+  `debug: true` is enabled, this fallback also emits a warning.
 
 The `getFeatureFlagsRuntimeClient` helper returns the same runtime client for
 every call in the current server process. Options passed to

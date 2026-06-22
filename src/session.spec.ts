@@ -513,16 +513,17 @@ describe('session', () => {
         );
       });
 
-      it('should fall back to token feature flags when runtime evaluation fails', async () => {
-        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      it('should call onFeatureFlagsError and fall back when waitUntilReady fails', async () => {
+        const error = new Error('runtime not ready');
+        const onFeatureFlagsError = jest.fn();
+        const request = createMockRequest();
         const runtimeClient = {
-          waitUntilReady: jest.fn().mockRejectedValue(new Error('runtime not ready')),
+          waitUntilReady: jest.fn().mockRejectedValue(error),
           getAllFlags: jest.fn(),
         } as unknown as FeatureFlagsRuntimeClient;
 
-        const { data } = await authkitLoader(createLoaderArgs(createMockRequest()), {
-          debug: true,
+        const { data } = await authkitLoader(createLoaderArgs(request), {
+          onFeatureFlagsError,
           featureFlags: {
             runtimeClient,
             waitUntilReady: true,
@@ -536,6 +537,69 @@ describe('session', () => {
             featureFlags: ['flag-1', 'flag-2'],
           }),
         );
+        expect(onFeatureFlagsError).toHaveBeenCalledWith({
+          error,
+          request,
+          user: mockSessionData.user,
+          organizationId: 'org-123',
+          tokenFeatureFlags: ['flag-1', 'flag-2'],
+        });
+      });
+
+      it('should call onFeatureFlagsError and fall back when getAllFlags fails', async () => {
+        const error = new Error('runtime client closed');
+        const onFeatureFlagsError = jest.fn();
+        const request = createMockRequest();
+        const runtimeClient = {
+          waitUntilReady: jest.fn().mockResolvedValue(undefined),
+          getAllFlags: jest.fn().mockImplementation(() => {
+            throw error;
+          }),
+        } as unknown as FeatureFlagsRuntimeClient;
+
+        const { data } = await authkitLoader(createLoaderArgs(request), {
+          onFeatureFlagsError,
+          featureFlags: {
+            runtimeClient,
+            waitUntilReady: true,
+          },
+        });
+
+        expect(runtimeClient.waitUntilReady).toHaveBeenCalledWith(undefined);
+        expect(runtimeClient.getAllFlags).toHaveBeenCalledWith({
+          userId: mockSessionData.user.id,
+          organizationId: 'org-123',
+        });
+        expect(data).toEqual(
+          expect.objectContaining({
+            featureFlags: ['flag-1', 'flag-2'],
+          }),
+        );
+        expect(onFeatureFlagsError).toHaveBeenCalledWith({
+          error,
+          request,
+          user: mockSessionData.user,
+          organizationId: 'org-123',
+          tokenFeatureFlags: ['flag-1', 'flag-2'],
+        });
+      });
+
+      it('should log runtime evaluation failures when debug is enabled', async () => {
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const runtimeClient = {
+          waitUntilReady: jest.fn().mockRejectedValue(new Error('runtime not ready')),
+          getAllFlags: jest.fn(),
+        } as unknown as FeatureFlagsRuntimeClient;
+
+        await authkitLoader(createLoaderArgs(createMockRequest()), {
+          debug: true,
+          featureFlags: {
+            runtimeClient,
+            waitUntilReady: true,
+          },
+        });
+
         expect(warnSpy).toHaveBeenCalledWith(
           '[AuthKit] Failed to evaluate feature flags with the WorkOS runtime client. Falling back to access token feature flags.',
           expect.any(Error),

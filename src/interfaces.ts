@@ -44,6 +44,14 @@ export interface RefreshSuccessOptions {
   organizationId: string | null;
 }
 
+export interface FeatureFlagsErrorOptions {
+  error: unknown;
+  request: Request;
+  user: User;
+  organizationId: string | null;
+  tokenFeatureFlags: string[];
+}
+
 export interface AuthKitFeatureFlagsOptions {
   runtimeClient: FeatureFlagsRuntimeClient;
   waitUntilReady?: boolean | { timeoutMs?: number };
@@ -158,6 +166,7 @@ export type AuthKitLoaderOptions = {
   ensureSignedIn?: boolean;
   debug?: boolean;
   featureFlags?: AuthKitFeatureFlagsOptions;
+  onFeatureFlagsError?: (options: FeatureFlagsErrorOptions) => void | Promise<void>;
   onSessionRefreshError?: (options: RefreshErrorOptions) => void | Response | Promise<void | Response>;
   onSessionRefreshSuccess?: (options: RefreshSuccessOptions) => void | Promise<void>;
 } & (
