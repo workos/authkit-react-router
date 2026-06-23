@@ -691,6 +691,17 @@ export async function getSessionFromCookie(cookie: string, session?: SessionData
   }
 }
 
+let cachedJWKS: ReturnType<typeof createRemoteJWKSet> | undefined;
+let cachedJWKSUrl: string | undefined;
+
+function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
+  const jwksUrl = getWorkOS().userManagement.getJwksUrl(getConfig('clientId'));
+  if (!cachedJWKS || cachedJWKSUrl !== jwksUrl) {
+    cachedJWKS = createRemoteJWKSet(new URL(jwksUrl));
+    cachedJWKSUrl = jwksUrl;
+  }
+  return cachedJWKS;
+}
 // WorkOS access tokens carry a fixed `iss` claim regardless of environment
 // or client id; see
 // https://workos.com/docs/reference/user-management/session-tokens/access-token.
@@ -704,7 +715,7 @@ export async function getSessionFromCookie(cookie: string, session?: SessionData
 const WORKOS_JWT_ISSUER = 'https://api.workos.com';
 
 async function verifyAccessToken(accessToken: string) {
-  const JWKS = createRemoteJWKSet(new URL(getWorkOS().userManagement.getJwksUrl(getConfig('clientId'))));
+  const JWKS = getJWKS();
   try {
     await jwtVerify(accessToken, JWKS, { issuer: WORKOS_JWT_ISSUER });
     return true;
