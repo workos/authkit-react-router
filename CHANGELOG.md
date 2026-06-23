@@ -9,6 +9,8 @@ used to signal breaking changes.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-23
+
 ### Added
 
 - `getFeatureFlagsRuntimeClient` returns a shared WorkOS Feature Flags runtime
