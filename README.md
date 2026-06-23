@@ -155,6 +155,67 @@ export function App() {
 }
 ```
 
+### Evaluate feature flags
+
+By default, `authkitLoader` reads `featureFlags` from the `feature_flags`
+claim in the WorkOS access token. This is convenient for small flag sets, but
+changes are reflected only after the user's access token refreshes.
+
+Use the Feature Flags runtime client when you need server-side flag evaluation
+that stays in sync independently of the user's session. The runtime client keeps
+flag configuration in memory and syncs changes in the background, so create one
+shared instance per server process rather than one client per request.
+
+```tsx
+import { type LoaderFunctionArgs, useLoaderData } from 'react-router';
+import { authkitLoader, getFeatureFlagsRuntimeClient } from '@workos-inc/authkit-react-router';
+
+const featureFlags = getFeatureFlagsRuntimeClient();
+
+export const loader = (args: LoaderFunctionArgs) =>
+  authkitLoader(args, {
+    featureFlags: {
+      runtimeClient: featureFlags,
+      waitUntilReady: { timeoutMs: 5000 },
+    },
+    onFeatureFlagsError: ({ error }) => {
+      console.error('Feature flags runtime client failed:', error);
+    },
+  });
+
+export function Dashboard() {
+  const { featureFlags } = useLoaderData<typeof loader>();
+  const hasAdvancedAnalytics = featureFlags?.includes('advanced-analytics');
+
+  return hasAdvancedAnalytics ? <AdvancedAnalytics /> : <BasicAnalytics />;
+}
+```
+
+After opting in, downstream route code can continue reading
+`auth.featureFlags` as before, but the values normally come from the runtime
+client instead of the JWT. The JWT claim is used only as a fallback if runtime
+evaluation fails.
+
+#### Source of `auth.featureFlags`
+
+`authkitLoader` preserves the existing token-based behavior unless you opt in to
+the runtime client:
+
+- Without `featureFlags.runtimeClient`, `auth.featureFlags` is read from the
+  access token's `feature_flags` claim.
+- With `featureFlags.runtimeClient`, `auth.featureFlags` is evaluated by the
+  runtime client using the signed-in user's `userId` and current
+  `organizationId`.
+- If runtime evaluation fails, `authkitLoader` falls back to the access token's
+  `feature_flags` claim so authentication can continue. Use
+  `onFeatureFlagsError` to report this fallback to your monitoring system. When
+  `debug: true` is enabled, this fallback also emits a warning.
+
+The `getFeatureFlagsRuntimeClient` helper returns the same runtime client for
+every call in the current server process. Options passed to
+`getFeatureFlagsRuntimeClient(options)` are only used when the client is created
+for the first time.
+
 ### Sign-in and sign-up routes
 
 `getSignInUrl` and `getSignUpUrl` return a `{ url, headers }` pair. The

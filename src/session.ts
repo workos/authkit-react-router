@@ -2,9 +2,11 @@ import { data, redirect, type LoaderFunctionArgs, type SessionData } from 'react
 import { getAuthorizationUrl } from './get-authorization-url.js';
 import type {
   AccessToken,
+  AuthKitFeatureFlagsOptions,
   AuthKitLoaderOptions,
   AuthorizedData,
   DataWithResponseInit,
+  FeatureFlagsErrorOptions,
   Session,
   UnauthorizedData,
   UnwrapData,
@@ -17,7 +19,7 @@ import { getConfig } from './config.js';
 import { getPKCECleanupCookieStrings } from './pkce.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit, isJsonResponse, isRedirect, isResponse } from './utils.js';
-import type { AuthenticationResponse } from '@workos-inc/node';
+import type { AuthenticationResponse, EvaluationContext } from '@workos-inc/node';
 
 // must be a type since this is a subtype of response
 // interfaces must conform to the types they extend
@@ -341,8 +343,10 @@ export async function authkitLoader<Data = unknown>(
     debug = false,
     onSessionRefreshSuccess,
     onSessionRefreshError,
+    onFeatureFlagsError,
     storage,
     cookie,
+    featureFlags: featureFlagsOptions,
   } = typeof loaderOrOptions === 'object' ? loaderOrOptions : options;
 
   const cookieName = cookie?.name ?? getConfig('cookieName');
@@ -395,7 +399,7 @@ export async function authkitLoader<Data = unknown>(
       roles = null,
       permissions = [],
       entitlements = [],
-      featureFlags = [],
+      featureFlags: tokenFeatureFlags = [],
     } = getClaimsFromAccessToken(session.accessToken);
 
     const { impersonator = null } = session;
@@ -409,6 +413,17 @@ export async function authkitLoader<Data = unknown>(
         organizationId,
       });
     }
+
+    const featureFlags = await getFeatureFlags({
+      options: featureFlagsOptions,
+      tokenFeatureFlags,
+      request,
+      user: session.user,
+      userId: session.user?.id,
+      organizationId,
+      debug,
+      onFeatureFlagsError,
+    });
 
     const auth: AuthorizedData = {
       user: session.user,
@@ -458,6 +473,75 @@ export async function authkitLoader<Data = unknown>(
 
     // Propagate other errors
     throw error;
+  }
+}
+
+async function getFeatureFlags({
+  options,
+  tokenFeatureFlags,
+  request,
+  user,
+  userId,
+  organizationId,
+  debug,
+  onFeatureFlagsError,
+}: {
+  options?: AuthKitFeatureFlagsOptions;
+  tokenFeatureFlags: string[];
+  request: Request;
+  user: FeatureFlagsErrorOptions['user'];
+  userId?: string;
+  organizationId: string | null;
+  debug: boolean;
+  onFeatureFlagsError?: (options: FeatureFlagsErrorOptions) => void | Promise<void>;
+}) {
+  if (!options) {
+    return tokenFeatureFlags;
+  }
+
+  try {
+    if (options.waitUntilReady) {
+      await options.runtimeClient.waitUntilReady(options.waitUntilReady === true ? undefined : options.waitUntilReady);
+    }
+
+    const context: EvaluationContext = {};
+    if (userId) {
+      context.userId = userId;
+    }
+    if (organizationId) {
+      context.organizationId = organizationId;
+    }
+
+    return Object.entries(options.runtimeClient.getAllFlags(context))
+      .filter(([, enabled]) => enabled)
+      .map(([flag]) => flag);
+  } catch (error) {
+    if (onFeatureFlagsError) {
+      try {
+        await onFeatureFlagsError({
+          error,
+          request,
+          user,
+          organizationId,
+          tokenFeatureFlags,
+        });
+      } catch (callbackError) {
+        // istanbul ignore next
+        if (debug) {
+          console.warn('[AuthKit] Feature flags error callback failed.', callbackError);
+        }
+      }
+    }
+
+    // istanbul ignore next
+    if (debug) {
+      console.warn(
+        '[AuthKit] Failed to evaluate feature flags with the WorkOS runtime client. Falling back to access token feature flags.',
+        error,
+      );
+    }
+
+    return tokenFeatureFlags;
   }
 }
 
