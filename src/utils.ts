@@ -7,12 +7,12 @@ import { DataWithResponseInit } from './interfaces.js';
  * @param fn - The function to be called once.
  * @returns A function that can only be called once.
  */
-export function lazy<T>(fn: () => T): () => T {
+export function lazy<Args extends unknown[], T>(fn: (...args: Args) => T): (...args: Args) => T {
   let called = false;
   let result: T;
-  return () => {
+  return (...args: Args) => {
     if (!called) {
-      result = fn();
+      result = fn(...args);
       called = true;
     }
     return result;

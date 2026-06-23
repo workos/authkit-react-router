@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { LoaderFunctionArgs, Session as ReactRouterSession, redirect } from 'react-router';
-import { AuthenticationResponse, type User } from '@workos-inc/node';
+import { AuthenticationResponse, type FeatureFlagsRuntimeClient, type User } from '@workos-inc/node';
 import * as ironSession from 'iron-session';
 import * as jose from 'jose';
 import {
@@ -30,6 +30,9 @@ const fakeWorkosInstance = {
     getLogoutUrl: jest.fn(({ sessionId }) => `https://auth.workos.com/logout/${sessionId}`),
     getJwksUrl: jest.fn((clientId: string) => `https://auth.workos.com/oauth/jwks/${clientId}`),
     authenticateWithRefreshToken: jest.fn(),
+  },
+  featureFlags: {
+    createRuntimeClient: jest.fn(),
   },
 };
 
@@ -123,7 +126,10 @@ describe('session', () => {
 
     // Reset getAuthorizationUrl mock
     getAuthorizationUrlMock.mockReset();
-    getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize');
+    getAuthorizationUrlMock.mockResolvedValue({
+      url: 'https://auth.workos.com/oauth/authorize',
+      headers: { 'Set-Cookie': 'wos-auth-verifier-default=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+    });
   });
 
   describe('encryptSession', () => {
@@ -231,6 +237,52 @@ describe('session', () => {
       expect(getLogoutUrl).not.toHaveBeenCalled();
     });
 
+    it('clears orphan wos-auth-verifier cookies from abandoned OAuth flows', async () => {
+      const mockSession = createMockSession({
+        has: jest.fn().mockReturnValue(true),
+        get: jest.fn().mockReturnValue('encrypted-jwt'),
+      });
+      getSession.mockResolvedValueOnce(mockSession);
+      unsealData.mockResolvedValueOnce({
+        accessToken: 'token.without.sessionid',
+        refreshToken: 'refresh-token',
+        user: { id: 'user-id' },
+        impersonator: null,
+      });
+      (jose.decodeJwt as jest.Mock).mockReturnValueOnce({});
+
+      const request = createMockRequest(
+        'wos-session=value; wos-auth-verifier-aaaaaaaa=sealed1; wos-auth-verifier-bbbbbbbb=sealed2; other=ignored',
+      );
+      const response = await terminateSession(request);
+
+      const setCookies = response.headers.getSetCookie();
+      expect(setCookies).toContain('destroyed-session-cookie');
+      expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-aaaaaaaa=;') && /Max-Age=0/.test(c))).toBe(true);
+      expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-bbbbbbbb=;') && /Max-Age=0/.test(c))).toBe(true);
+      expect(setCookies.every((c) => !c.startsWith('other='))).toBe(true);
+    });
+
+    it('emits no PKCE cleanup headers when no orphan cookies are present', async () => {
+      const mockSession = createMockSession({
+        has: jest.fn().mockReturnValue(true),
+        get: jest.fn().mockReturnValue('encrypted-jwt'),
+      });
+      getSession.mockResolvedValueOnce(mockSession);
+      unsealData.mockResolvedValueOnce({
+        accessToken: 'token.without.sessionid',
+        refreshToken: 'refresh-token',
+        user: { id: 'user-id' },
+        impersonator: null,
+      });
+      (jose.decodeJwt as jest.Mock).mockReturnValueOnce({});
+
+      const response = await terminateSession(createMockRequest('wos-session=value; other=still-ignored'));
+
+      const setCookies = response.headers.getSetCookie();
+      expect(setCookies).toEqual(['destroyed-session-cookie']);
+    });
+
     it('should redirect to WorkOS logout URL when valid session exists', async () => {
       // Setup a session with jwt
       const mockSession = createMockSession({
@@ -310,7 +362,9 @@ describe('session', () => {
           assertIsResponse(response);
           expect(response.status).toBe(302);
           expect(response.headers.get('Location')).toMatch(/^https:\/\/auth\.workos\.com\/oauth/);
-          expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          const setCookies = response.headers.getSetCookie();
+          expect(setCookies).toContain('destroyed-session-cookie');
+          expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-'))).toBe(true);
         }
       });
 
@@ -406,6 +460,16 @@ describe('session', () => {
         jsonSpy.mockRestore();
       });
 
+      it('validates the access token issuer claim against https://api.workos.com', async () => {
+        await authkitLoader(createLoaderArgs(createMockRequest()));
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[0]).toBe('valid.jwt.token');
+          expect(call[2]).toEqual({ issuer: 'https://api.workos.com' });
+        }
+      });
+
       it('should return authorized data with session claims', async () => {
         const { data } = await authkitLoader(createLoaderArgs(createMockRequest()));
 
@@ -420,6 +484,130 @@ describe('session', () => {
           roles: ['admin'],
           sessionId: 'test-session-id',
         });
+      });
+
+      it('should populate featureFlags from the runtime client when configured', async () => {
+        const runtimeClient = {
+          waitUntilReady: jest.fn().mockResolvedValue(undefined),
+          getAllFlags: jest.fn().mockReturnValue({
+            'runtime-flag': true,
+            'disabled-runtime-flag': false,
+          }),
+        } as unknown as FeatureFlagsRuntimeClient;
+
+        const { data } = await authkitLoader(createLoaderArgs(createMockRequest()), {
+          featureFlags: {
+            runtimeClient,
+            waitUntilReady: { timeoutMs: 100 },
+          },
+        });
+
+        expect(runtimeClient.waitUntilReady).toHaveBeenCalledWith({ timeoutMs: 100 });
+        expect(runtimeClient.getAllFlags).toHaveBeenCalledWith({
+          userId: mockSessionData.user.id,
+          organizationId: 'org-123',
+        });
+        expect(data).toEqual(
+          expect.objectContaining({
+            featureFlags: ['runtime-flag'],
+          }),
+        );
+      });
+
+      it('should call onFeatureFlagsError and fall back when waitUntilReady fails', async () => {
+        const error = new Error('runtime not ready');
+        const onFeatureFlagsError = jest.fn();
+        const request = createMockRequest();
+        const runtimeClient = {
+          waitUntilReady: jest.fn().mockRejectedValue(error),
+          getAllFlags: jest.fn(),
+        } as unknown as FeatureFlagsRuntimeClient;
+
+        const { data } = await authkitLoader(createLoaderArgs(request), {
+          onFeatureFlagsError,
+          featureFlags: {
+            runtimeClient,
+            waitUntilReady: true,
+          },
+        });
+
+        expect(runtimeClient.waitUntilReady).toHaveBeenCalledWith(undefined);
+        expect(runtimeClient.getAllFlags).not.toHaveBeenCalled();
+        expect(data).toEqual(
+          expect.objectContaining({
+            featureFlags: ['flag-1', 'flag-2'],
+          }),
+        );
+        expect(onFeatureFlagsError).toHaveBeenCalledWith({
+          error,
+          request,
+          user: mockSessionData.user,
+          organizationId: 'org-123',
+          tokenFeatureFlags: ['flag-1', 'flag-2'],
+        });
+      });
+
+      it('should call onFeatureFlagsError and fall back when getAllFlags fails', async () => {
+        const error = new Error('runtime client closed');
+        const onFeatureFlagsError = jest.fn();
+        const request = createMockRequest();
+        const runtimeClient = {
+          waitUntilReady: jest.fn().mockResolvedValue(undefined),
+          getAllFlags: jest.fn().mockImplementation(() => {
+            throw error;
+          }),
+        } as unknown as FeatureFlagsRuntimeClient;
+
+        const { data } = await authkitLoader(createLoaderArgs(request), {
+          onFeatureFlagsError,
+          featureFlags: {
+            runtimeClient,
+            waitUntilReady: true,
+          },
+        });
+
+        expect(runtimeClient.waitUntilReady).toHaveBeenCalledWith(undefined);
+        expect(runtimeClient.getAllFlags).toHaveBeenCalledWith({
+          userId: mockSessionData.user.id,
+          organizationId: 'org-123',
+        });
+        expect(data).toEqual(
+          expect.objectContaining({
+            featureFlags: ['flag-1', 'flag-2'],
+          }),
+        );
+        expect(onFeatureFlagsError).toHaveBeenCalledWith({
+          error,
+          request,
+          user: mockSessionData.user,
+          organizationId: 'org-123',
+          tokenFeatureFlags: ['flag-1', 'flag-2'],
+        });
+      });
+
+      it('should log runtime evaluation failures when debug is enabled', async () => {
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const runtimeClient = {
+          waitUntilReady: jest.fn().mockRejectedValue(new Error('runtime not ready')),
+          getAllFlags: jest.fn(),
+        } as unknown as FeatureFlagsRuntimeClient;
+
+        await authkitLoader(createLoaderArgs(createMockRequest()), {
+          debug: true,
+          featureFlags: {
+            runtimeClient,
+            waitUntilReady: true,
+          },
+        });
+
+        expect(warnSpy).toHaveBeenCalledWith(
+          '[AuthKit] Failed to evaluate feature flags with the WorkOS runtime client. Falling back to access token feature flags.',
+          expect.any(Error),
+        );
+
+        logSpy.mockRestore();
+        warnSpy.mockRestore();
       });
 
       it('should handle custom loader data', async () => {
@@ -618,7 +806,10 @@ describe('session', () => {
         authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
 
         // Setup the mock to return a URL with state parameter
-        getAuthorizationUrlMock.mockResolvedValue('https://auth.workos.com/oauth/authorize?state=abc123');
+        getAuthorizationUrlMock.mockResolvedValue({
+          url: 'https://auth.workos.com/oauth/authorize?state=abc123',
+          headers: { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+        });
 
         try {
           const mockRequest = createMockRequest('test-cookie', 'https://app.example.com/dashboard/settings');
@@ -628,12 +819,19 @@ describe('session', () => {
           assertIsResponse(response);
           expect(response.status).toBe(302);
           expect(response.headers.get('Location')).toBe('https://auth.workos.com/oauth/authorize?state=abc123');
-          expect(response.headers.get('Set-Cookie')).toBe('destroyed-session-cookie');
+          // The destroy cookie and the new PKCE cookie must both be present
+          const setCookies = response.headers.getSetCookie();
+          expect(setCookies).toContain('destroyed-session-cookie');
+          expect(setCookies).toContain('wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600');
 
           // Verify getAuthorizationUrl was called with the correct returnPathname
-          expect(getAuthorizationUrlMock).toHaveBeenCalledWith({
-            returnPathname: '/dashboard/settings',
-          });
+          // and the request is threaded through for Secure-attribute detection.
+          expect(getAuthorizationUrlMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+              returnPathname: '/dashboard/settings',
+              request: expect.any(Request),
+            }),
+          );
         }
       });
 

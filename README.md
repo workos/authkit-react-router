@@ -142,10 +142,10 @@ import { authkitLoader } from '@workos-inc/authkit-react-router';
 export const loader = (args: LoaderFunctionArgs) => authkitLoader(args);
 
 export function App() {
-  // Retrieves the user from the session or returns `null` if no user is signed in
+  // Retrieves the user from the session or returns `null` if no user is signed in.
   // Other supported values include `sessionId`, `organizationId`,
   // `role`, `permissions`, `entitlements`, `featureFlags`, and `impersonator`.
-  const { user, signInUrl, signUpUrl } = useLoaderData<typeof loader>();
+  const { user } = useLoaderData<typeof loader>();
 
   return (
     <div>
@@ -155,33 +155,127 @@ export function App() {
 }
 ```
 
-For pages where you want to display a signed-in and signed-out view, use `authkitLoader` to retrieve the user profile from WorkOS. You can pass in additional data by providing a loader function directly to `authkitLoader`.
+### Evaluate feature flags
+
+By default, `authkitLoader` reads `featureFlags` from the `feature_flags`
+claim in the WorkOS access token. This is convenient for small flag sets, but
+changes are reflected only after the user's access token refreshes.
+
+Use the Feature Flags runtime client when you need server-side flag evaluation
+that stays in sync independently of the user's session. The runtime client keeps
+flag configuration in memory and syncs changes in the background, so create one
+shared instance per server process rather than one client per request.
 
 ```tsx
-import { type ActionFunctionArgs, type LoaderFunctionArgs, data, Form, Link, useLoaderData } from 'react-router';
-import { getSignInUrl, getSignUpUrl, signOut, authkitLoader } from '@workos-inc/authkit-react-router';
+import { type LoaderFunctionArgs, useLoaderData } from 'react-router';
+import { authkitLoader, getFeatureFlagsRuntimeClient } from '@workos-inc/authkit-react-router';
+
+const featureFlags = getFeatureFlagsRuntimeClient();
 
 export const loader = (args: LoaderFunctionArgs) =>
-  authkitLoader(args, async ({ request, auth }) => {
-    return data({
-      signInUrl: await getSignInUrl(),
-      signUpUrl: await getSignUpUrl(),
-    });
+  authkitLoader(args, {
+    featureFlags: {
+      runtimeClient: featureFlags,
+      waitUntilReady: { timeoutMs: 5000 },
+    },
+    onFeatureFlagsError: ({ error }) => {
+      console.error('Feature flags runtime client failed:', error);
+    },
   });
+
+export function Dashboard() {
+  const { featureFlags } = useLoaderData<typeof loader>();
+  const hasAdvancedAnalytics = featureFlags?.includes('advanced-analytics');
+
+  return hasAdvancedAnalytics ? <AdvancedAnalytics /> : <BasicAnalytics />;
+}
+```
+
+After opting in, downstream route code can continue reading
+`auth.featureFlags` as before, but the values normally come from the runtime
+client instead of the JWT. The JWT claim is used only as a fallback if runtime
+evaluation fails.
+
+#### Source of `auth.featureFlags`
+
+`authkitLoader` preserves the existing token-based behavior unless you opt in to
+the runtime client:
+
+- Without `featureFlags.runtimeClient`, `auth.featureFlags` is read from the
+  access token's `feature_flags` claim.
+- With `featureFlags.runtimeClient`, `auth.featureFlags` is evaluated by the
+  runtime client using the signed-in user's `userId` and current
+  `organizationId`.
+- If runtime evaluation fails, `authkitLoader` falls back to the access token's
+  `feature_flags` claim so authentication can continue. Use
+  `onFeatureFlagsError` to report this fallback to your monitoring system. When
+  `debug: true` is enabled, this fallback also emits a warning.
+
+The `getFeatureFlagsRuntimeClient` helper returns the same runtime client for
+every call in the current server process. Options passed to
+`getFeatureFlagsRuntimeClient(options)` are only used when the client is created
+for the first time.
+
+### Sign-in and sign-up routes
+
+`getSignInUrl` and `getSignUpUrl` return a `{ url, headers }` pair. The
+`headers` contain a short-lived `Set-Cookie` used for PKCE + CSRF
+protection, which **must** travel to the browser on the same redirect
+response that sends the user to AuthKit. Create dedicated redirect routes
+for sign-in and sign-up and link to those routes from your pages:
+
+```ts
+// app/routes/login.ts
+import { redirect, type LoaderFunctionArgs } from 'react-router';
+import { getSignInUrl } from '@workos-inc/authkit-react-router';
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const url = new URL(request.url);
+  const { url: authUrl, headers } = await getSignInUrl(url.searchParams.get('returnTo') ?? undefined, request);
+  return redirect(authUrl, { headers });
+}
+```
+
+```ts
+// app/routes/signup.ts
+import { redirect, type LoaderFunctionArgs } from 'react-router';
+import { getSignUpUrl } from '@workos-inc/authkit-react-router';
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const url = new URL(request.url);
+  const { url: authUrl, headers } = await getSignUpUrl(url.searchParams.get('returnTo') ?? undefined, request);
+  return redirect(authUrl, { headers });
+}
+```
+
+Passing `request` ensures the `Secure` attribute on the PKCE cookie
+matches your app's live protocol (important in local dev, where the app
+runs on `http://localhost` even if `WORKOS_REDIRECT_URI` is an `https://`
+URL).
+
+Then link to those routes from any page where you want to offer sign-in
+or sign-up:
+
+```tsx
+// app/routes/_index.tsx
+import { type ActionFunctionArgs, type LoaderFunctionArgs, Form, Link, useLoaderData } from 'react-router';
+import { signOut, authkitLoader } from '@workos-inc/authkit-react-router';
+
+export const loader = (args: LoaderFunctionArgs) => authkitLoader(args);
 
 export async function action({ request }: ActionFunctionArgs) {
   return await signOut(request);
 }
 
 export default function HomePage() {
-  const { user, signInUrl, signUpUrl } = useLoaderData<typeof loader>();
+  const { user } = useLoaderData<typeof loader>();
 
   if (!user) {
     return (
       <>
-        <Link to={signInUrl}>Log in</Link>
+        <Link to="/login">Log in</Link>
         <br />
-        <Link to={signUpUrl}>Sign Up</Link>
+        <Link to="/signup">Sign Up</Link>
       </>
     );
   }
@@ -194,6 +288,35 @@ export default function HomePage() {
   );
 }
 ```
+
+> [!NOTE]
+>
+> Prior to `0.10.0`, `getSignInUrl` / `getSignUpUrl` returned a bare URL
+> string that could be rendered directly in a `<Link>`. That pattern is
+> no longer supported — see [Migrating from 0.4.x](#migrating-from-04x)
+> below.
+
+### Sign-in endpoint
+
+The sign-in route above doubles as your **Sign-in endpoint** (also known
+as `initiate_login_uri`) — the URL WorkOS redirects to when it needs to
+start an authentication flow on your app's behalf (for example, when an
+admin impersonates a user from the dashboard, or when a password-reset
+email lands on a device that is not already signed in).
+
+In the [WorkOS dashboard](https://dashboard.workos.com), go to
+**Redirects** and set the **Sign-in endpoint** to the public URL of the
+route (e.g., `http://localhost:5173/login` in development,
+`https://your-app.com/login` in production).
+
+> [!IMPORTANT]
+> A configured Sign-in endpoint is required for
+> [impersonation](https://workos.com/docs/user-management/impersonation)
+> to work. Without it, WorkOS-initiated flows (such as impersonating a
+> user from the dashboard) redirect directly to your callback URL
+> without a `state` parameter and fail the PKCE/CSRF verification this
+> library enforces on every callback, surfacing as a
+> `Missing required auth parameter` error.
 
 ### Requiring auth
 
@@ -497,3 +620,84 @@ export const loader = (args) =>
 > When deploying to serverless environments like AWS Lambda, ensure you pass the same storage configuration to both your main routes and the callback route to handle cold starts properly.
 
 AuthKit works with any session storage that implements React Router's `SessionStorage` interface, including Redis-based or database-backed implementations.
+
+## Troubleshooting
+
+### `Missing required auth parameter` when impersonating from the WorkOS dashboard
+
+This error occurs when WorkOS-initiated flows (such as dashboard
+impersonation) redirect directly to your callback URL without going
+through your application's sign-in flow. Because this library enforces
+PKCE/CSRF verification on every callback, the request is rejected when
+the required `state` parameter is missing.
+
+**Fix:** Configure a [sign-in endpoint](#sign-in-endpoint) in your
+WorkOS dashboard so that impersonation flows route through your app
+first, allowing the PKCE verifier and CSRF state to be set up before
+redirecting to WorkOS.
+
+## Migrating from 0.4.x
+
+`0.10.0` is a breaking release that adds PKCE and CSRF protection to the
+authorization-code flow. Upgrading from `0.4.x` requires small changes to
+any route that builds a sign-in or sign-up URL.
+
+### 1. `getSignInUrl` / `getSignUpUrl` now return `{ url, headers }`
+
+They used to return a bare URL string. They now return an object with a
+`url` and a `Set-Cookie` header that **must** travel to the browser on
+the redirect that starts the OAuth flow, so that the callback can verify
+the response came from this browser (CSRF) and recover the PKCE code
+verifier.
+
+```ts
+// 0.4.x
+const signInUrl = await getSignInUrl();
+return redirect(signInUrl);
+
+// 0.10.0+
+const { url, headers } = await getSignInUrl('/dashboard', request);
+return redirect(url, { headers });
+```
+
+### 2. Use a dedicated redirect route for sign-in / sign-up
+
+The old "load the URL into your page data and render it in a `<Link>`"
+pattern no longer works: the cookie and the URL must leave the server on
+the same response. Move the URL generation into a loader that returns a
+redirect, and link to that loader's path from your page:
+
+```ts
+// app/routes/login.ts
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { url, headers } = await getSignInUrl(undefined, request);
+  return redirect(url, { headers });
+}
+```
+
+```tsx
+// Any page:
+<Link to="/login">Log in</Link>
+```
+
+See [Sign-in and sign-up routes](#sign-in-and-sign-up-routes) above for
+the full pattern.
+
+### 3. Pass `request` when calling from a loader
+
+`getSignInUrl` / `getSignUpUrl` (and `getAuthorizationUrl`) accept the
+incoming `Request` as their second argument. Pass it when available so
+the PKCE cookie's `Secure` attribute reflects the live request protocol
+rather than the configured `redirectUri`'s — otherwise local dev on
+`http://localhost` with `WORKOS_REDIRECT_URI=https://…` mints a `Secure`
+cookie the browser silently drops, and the callback fails with
+`Auth cookie missing`.
+
+### 4. `@workos-inc/node` minimum is `^8.9.0`
+
+PKCE is implemented in `@workos-inc/node`'s `pkce` namespace, which
+requires `^8.9.0`. If your app pins an older version, upgrade:
+
+```bash
+npm install @workos-inc/node@^8.9.0
+```

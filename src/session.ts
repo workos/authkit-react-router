@@ -2,9 +2,11 @@ import { data, redirect, type LoaderFunctionArgs, type SessionData } from 'react
 import { getAuthorizationUrl } from './get-authorization-url.js';
 import type {
   AccessToken,
+  AuthKitFeatureFlagsOptions,
   AuthKitLoaderOptions,
   AuthorizedData,
   DataWithResponseInit,
+  FeatureFlagsErrorOptions,
   Session,
   UnauthorizedData,
   UnwrapData,
@@ -14,9 +16,10 @@ import { getWorkOS } from './workos.js';
 import { sealData, unsealData } from 'iron-session';
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { getConfig } from './config.js';
+import { getPKCECleanupCookieStrings } from './pkce.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
 import { isDataWithResponseInit, isJsonResponse, isRedirect, isResponse } from './utils.js';
-import type { AuthenticationResponse } from '@workos-inc/node';
+import type { AuthenticationResponse, EvaluationContext } from '@workos-inc/node';
 
 // must be a type since this is a subtype of response
 // interfaces must conform to the types they extend
@@ -44,7 +47,8 @@ export async function refreshSession(request: Request, options: { organizationId
   const cookie = request.headers.get('Cookie');
   const session = cookie ? await getSessionFromCookie(cookie) : null;
   if (!session) {
-    throw redirect(await getAuthorizationUrl());
+    const { url, headers } = await getAuthorizationUrl({ request });
+    throw redirect(url, { headers });
   }
 
   try {
@@ -339,8 +343,10 @@ export async function authkitLoader<Data = unknown>(
     debug = false,
     onSessionRefreshSuccess,
     onSessionRefreshError,
+    onFeatureFlagsError,
     storage,
     cookie,
+    featureFlags: featureFlagsOptions,
   } = typeof loaderOrOptions === 'object' ? loaderOrOptions : options;
 
   const cookieName = cookie?.name ?? getConfig('cookieName');
@@ -361,10 +367,12 @@ export async function authkitLoader<Data = unknown>(
         const returnPathname = getReturnPathname(request.url);
         const cookieSession = await getSession(request.headers.get('Cookie'));
 
-        throw redirect(await getAuthorizationUrl({ returnPathname }), {
-          headers: {
-            'Set-Cookie': await destroySession(cookieSession),
-          },
+        const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
+        throw redirect(url, {
+          headers: [
+            ['Set-Cookie', await destroySession(cookieSession)],
+            ['Set-Cookie', authHeaders['Set-Cookie']],
+          ],
         });
       }
 
@@ -391,7 +399,7 @@ export async function authkitLoader<Data = unknown>(
       roles = null,
       permissions = [],
       entitlements = [],
-      featureFlags = [],
+      featureFlags: tokenFeatureFlags = [],
     } = getClaimsFromAccessToken(session.accessToken);
 
     const { impersonator = null } = session;
@@ -405,6 +413,17 @@ export async function authkitLoader<Data = unknown>(
         organizationId,
       });
     }
+
+    const featureFlags = await getFeatureFlags({
+      options: featureFlagsOptions,
+      tokenFeatureFlags,
+      request,
+      user: session.user,
+      userId: session.user?.id,
+      organizationId,
+      debug,
+      onFeatureFlagsError,
+    });
 
     const auth: AuthorizedData = {
       user: session.user,
@@ -443,15 +462,86 @@ export async function authkitLoader<Data = unknown>(
       }
 
       const returnPathname = getReturnPathname(request.url);
-      throw redirect(await getAuthorizationUrl({ returnPathname }), {
-        headers: {
-          'Set-Cookie': await destroySession(cookieSession),
-        },
+      const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
+      throw redirect(url, {
+        headers: [
+          ['Set-Cookie', await destroySession(cookieSession)],
+          ['Set-Cookie', authHeaders['Set-Cookie']],
+        ],
       });
     }
 
     // Propagate other errors
     throw error;
+  }
+}
+
+async function getFeatureFlags({
+  options,
+  tokenFeatureFlags,
+  request,
+  user,
+  userId,
+  organizationId,
+  debug,
+  onFeatureFlagsError,
+}: {
+  options?: AuthKitFeatureFlagsOptions;
+  tokenFeatureFlags: string[];
+  request: Request;
+  user: FeatureFlagsErrorOptions['user'];
+  userId?: string;
+  organizationId: string | null;
+  debug: boolean;
+  onFeatureFlagsError?: (options: FeatureFlagsErrorOptions) => void | Promise<void>;
+}) {
+  if (!options) {
+    return tokenFeatureFlags;
+  }
+
+  try {
+    if (options.waitUntilReady) {
+      await options.runtimeClient.waitUntilReady(options.waitUntilReady === true ? undefined : options.waitUntilReady);
+    }
+
+    const context: EvaluationContext = {};
+    if (userId) {
+      context.userId = userId;
+    }
+    if (organizationId) {
+      context.organizationId = organizationId;
+    }
+
+    return Object.entries(options.runtimeClient.getAllFlags(context))
+      .filter(([, enabled]) => enabled)
+      .map(([flag]) => flag);
+  } catch (error) {
+    if (onFeatureFlagsError) {
+      try {
+        await onFeatureFlagsError({
+          error,
+          request,
+          user,
+          organizationId,
+          tokenFeatureFlags,
+        });
+      } catch (callbackError) {
+        // istanbul ignore next
+        if (debug) {
+          console.warn('[AuthKit] Feature flags error callback failed.', callbackError);
+        }
+      }
+    }
+
+    // istanbul ignore next
+    if (debug) {
+      console.warn(
+        '[AuthKit] Failed to evaluate feature flags with the WorkOS runtime client. Falling back to access token feature flags.',
+        error,
+      );
+    }
+
+    return tokenFeatureFlags;
   }
 }
 
@@ -531,17 +621,23 @@ async function handleAuthLoader(
 
 export async function terminateSession(request: Request, { returnTo }: { returnTo?: string } = {}) {
   const { getSession, destroySession } = await getSessionStorage();
-  const encryptedSession = await getSession(request.headers.get('Cookie'));
-  const { accessToken } = (await getSessionFromCookie(
-    request.headers.get('Cookie') as string,
-    encryptedSession,
-  )) as Session;
+  const cookieHeader = request.headers.get('Cookie');
+  const encryptedSession = await getSession(cookieHeader);
+  const { accessToken } = (await getSessionFromCookie(cookieHeader as string, encryptedSession)) as Session;
 
   const { sessionId } = getClaimsFromAccessToken(accessToken);
 
-  const headers = {
+  // Destroy the session cookie plus any orphan `wos-auth-verifier-*` cookies
+  // from abandoned OAuth flows — the per-flow cookie scheme means an
+  // unfinished flow leaves a cookie behind that the browser will keep
+  // sending until its 10-minute Max-Age expires, and stacking enough of
+  // them can exceed the per-domain cookie cap.
+  const headers = new Headers({
     'Set-Cookie': await destroySession(encryptedSession),
-  };
+  });
+  for (const cleanup of getPKCECleanupCookieStrings(cookieHeader, { request })) {
+    headers.append('Set-Cookie', cleanup);
+  }
 
   if (sessionId) {
     return redirect(getWorkOS().userManagement.getLogoutUrl({ sessionId, returnTo }), {
@@ -606,11 +702,22 @@ function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
   }
   return cachedJWKS;
 }
+// WorkOS access tokens carry a fixed `iss` claim regardless of environment
+// or client id; see
+// https://workos.com/docs/reference/user-management/session-tokens/access-token.
+// Validating it defends against tokens signed by a different WorkOS project
+// whose JWKS happens to resolve to the same keys, and matches the team's
+// "always validate iss" JWT rule.
+//
+// WorkOS access tokens do not carry a standard `aud` claim — the target
+// client is encoded as `client_id` instead — so we do not pass `audience`
+// to jwtVerify here; doing so would reject every token.
+const WORKOS_JWT_ISSUER = 'https://api.workos.com';
 
 async function verifyAccessToken(accessToken: string) {
   const JWKS = getJWKS();
   try {
-    await jwtVerify(accessToken, JWKS);
+    await jwtVerify(accessToken, JWKS, { issuer: WORKOS_JWT_ISSUER });
     return true;
   } catch (e) {
     return false;
