@@ -1,6 +1,6 @@
 import { sealData } from 'iron-session';
 import { getConfig } from './config.js';
-import type { GetAuthURLOptions, GetAuthURLResult, State } from './interfaces.js';
+import type { GetAuthURLOptions, GetAuthURLResult, PKCECookiePayload, State } from './interfaces.js';
 import { getPKCECookieString } from './pkce.js';
 import { sanitizeReturnPathname } from './return-pathname.js';
 import { getWorkOS } from './workos.js';
@@ -18,14 +18,19 @@ import { getWorkOS } from './workos.js';
  *
  * Internally this:
  * 1. Generates a PKCE verifier / challenge pair (RFC 7636, S256).
- * 2. Seals `{ nonce, codeVerifier, customState, returnPathname }` with
- *    iron-session under the configured cookie password.
- * 3. Sends the sealed value as the OAuth `state` parameter.
- * 4. Sets an HTTP-only, flow-specific cookie (`wos-auth-verifier-<hash>`)
- *    with the same sealed value so the callback can:
- *      - prove the response came from a flow this browser initiated
- *        (CSRF: `cookie === state`); and
- *      - recover the `codeVerifier` to complete the PKCE exchange.
+ * 2. Seals `{ nonce, customState, returnPathname }` (no secret) and sends it
+ *    as the OAuth `state` parameter.
+ * 3. Seals `{ nonce, codeVerifier }` separately and sets it as an HTTP-only,
+ *    flow-specific cookie (`wos-auth-verifier-<hash>`). The `codeVerifier`
+ *    lives only in this cookie, never in the URL, so the callback can:
+ *      - prove the response came from a flow this browser initiated by
+ *        matching the cookie's `nonce` against the URL state's `nonce`; and
+ *      - recover the `codeVerifier` (from the cookie) to complete the PKCE
+ *        exchange.
+ *
+ * Because the verifier never travels in the URL, possession of a leaked
+ * callback URL alone cannot complete the exchange — the initiating browser's
+ * HttpOnly cookie is required.
  */
 export async function getAuthorizationUrl(options: GetAuthURLOptions = {}): Promise<GetAuthURLResult> {
   const {
@@ -40,10 +45,10 @@ export async function getAuthorizationUrl(options: GetAuthURLOptions = {}): Prom
   } = options;
 
   const pkce = await getWorkOS().pkce.generate();
+  const nonce = crypto.randomUUID();
 
   const state = {
-    nonce: crypto.randomUUID(),
-    codeVerifier: pkce.codeVerifier,
+    nonce,
     customState,
     // Sanitize before sealing so a hostile caller can't plant a malicious
     // return target (absolute URL, CRLF smuggle, dot-segment traversal, etc.)
@@ -55,6 +60,15 @@ export async function getAuthorizationUrl(options: GetAuthURLOptions = {}): Prom
     password: getConfig('cookiePassword'),
     // Match the PKCE cookie's Max-Age so a stale sealed state can't be
     // replayed after the cookie itself has expired.
+    ttl: 600,
+  });
+
+  // The PKCE verifier is the secret that binds the authorization code to this
+  // browser. It lives ONLY in the HttpOnly cookie, never in the URL state, so
+  // a leaked callback URL can't be exchanged without the initiating browser's
+  // cookie. `nonce` ties it back to the URL state.
+  const sealedVerifier = await sealData({ nonce, codeVerifier: pkce.codeVerifier } satisfies PKCECookiePayload, {
+    password: getConfig('cookiePassword'),
     ttl: 600,
   });
 
@@ -73,6 +87,6 @@ export async function getAuthorizationUrl(options: GetAuthURLOptions = {}): Prom
 
   return {
     url,
-    headers: { 'Set-Cookie': getPKCECookieString(sealedState, { request, redirectUri }) },
+    headers: { 'Set-Cookie': getPKCECookieString(sealedState, { value: sealedVerifier, request, redirectUri }) },
   };
 }

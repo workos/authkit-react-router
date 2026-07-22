@@ -48,17 +48,25 @@ export function createRequestWithSearchParams(request: Request, modifier: Search
  * `Cookie` header in the callback request.
  */
 export async function createSealedState(
-  overrides: Partial<State> = {},
+  overrides: Partial<State & { codeVerifier: string }> = {},
 ): Promise<{ sealedState: string; cookieHeader: string; codeVerifier: string }> {
+  const nonce = overrides.nonce ?? 'test-nonce';
+  const codeVerifier = overrides.codeVerifier ?? 'test-code-verifier';
+
+  // The OAuth `state` URL param carries no secret — only the nonce and any
+  // caller flow metadata.
   const state: State = {
-    nonce: overrides.nonce ?? 'test-nonce',
-    codeVerifier: overrides.codeVerifier ?? 'test-code-verifier',
+    nonce,
     customState: overrides.customState,
     returnPathname: overrides.returnPathname,
   };
   const sealedState = await sealData(state, { password: getConfig('cookiePassword') });
-  const cookieHeader = `${getPKCECookieNameForState(sealedState)}=${sealedState}`;
-  return { sealedState, cookieHeader, codeVerifier: state.codeVerifier };
+
+  // The PKCE verifier lives only in the HttpOnly cookie, sealed separately and
+  // bound to the same nonce.
+  const sealedVerifier = await sealData({ nonce, codeVerifier }, { password: getConfig('cookiePassword') });
+  const cookieHeader = `${getPKCECookieNameForState(sealedState)}=${sealedVerifier}`;
+  return { sealedState, cookieHeader, codeVerifier };
 }
 
 /**

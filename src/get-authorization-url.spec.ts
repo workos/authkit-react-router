@@ -2,7 +2,7 @@ import { unsealData } from 'iron-session';
 import { getAuthorizationUrl } from './get-authorization-url.js';
 import { getConfig } from './config.js';
 import { getPKCECookieNameForState, PKCE_COOKIE_NAME } from './pkce.js';
-import type { State } from './interfaces.js';
+import type { PKCECookiePayload, State } from './interfaces.js';
 
 describe('getAuthorizationUrl', () => {
   it('generates a valid WorkOS authorization URL with PKCE parameters', async () => {
@@ -16,24 +16,46 @@ describe('getAuthorizationUrl', () => {
     expect(url).toContain('code_challenge_method=S256');
   });
 
-  it('seals return-trip state into the OAuth state parameter', async () => {
+  it('seals return-trip state into the OAuth state parameter without the code verifier', async () => {
     const { url } = await getAuthorizationUrl({ returnPathname: '/dashboard' });
     const parsed = new URL(url);
     const state = parsed.searchParams.get('state');
     expect(state).toBeTruthy();
 
-    const unsealed = await unsealData<State>(state!, { password: getConfig('cookiePassword') });
+    const unsealed = await unsealData<State & { codeVerifier?: string }>(state!, {
+      password: getConfig('cookiePassword'),
+    });
     expect(unsealed.returnPathname).toBe('/dashboard');
-    expect(unsealed.codeVerifier).toEqual(expect.any(String));
     expect(unsealed.nonce).toEqual(expect.any(String));
+    // The PKCE secret must never travel in the URL state.
+    expect(unsealed.codeVerifier).toBeUndefined();
   });
 
-  it('emits a flow-specific PKCE cookie tied to the sealed state', async () => {
+  it('keeps the code verifier only in the HttpOnly cookie, not the URL', async () => {
     const { url, headers } = await getAuthorizationUrl();
 
     const state = new URL(url).searchParams.get('state')!;
     const setCookie = headers['Set-Cookie'];
-    expect(setCookie).toContain(`${getPKCECookieNameForState(state)}=${state}`);
+    const cookieName = getPKCECookieNameForState(state);
+    const cookieValue = setCookie.slice(`${cookieName}=`.length).split(';')[0];
+
+    // The cookie value is a distinct sealed blob, NOT a copy of the URL state.
+    expect(setCookie).toContain(`${cookieName}=`);
+    expect(cookieValue).not.toBe(state);
+
+    const stateNonce = (await unsealData<State>(state, { password: getConfig('cookiePassword') })).nonce;
+    const cookie = await unsealData<PKCECookiePayload>(cookieValue, { password: getConfig('cookiePassword') });
+    expect(cookie.codeVerifier).toEqual(expect.any(String));
+    // The cookie is bound to the URL state via the shared nonce.
+    expect(cookie.nonce).toBe(stateNonce);
+  });
+
+  it('emits a flow-specific PKCE cookie with the expected attributes', async () => {
+    const { url, headers } = await getAuthorizationUrl();
+
+    const state = new URL(url).searchParams.get('state')!;
+    const setCookie = headers['Set-Cookie'];
+    expect(setCookie).toContain(`${getPKCECookieNameForState(state)}=`);
     expect(setCookie).toContain('Path=/');
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('SameSite=Lax');

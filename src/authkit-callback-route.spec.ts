@@ -132,6 +132,30 @@ describe('authLoader', () => {
       expect(authenticateWithCode).not.toHaveBeenCalled();
     });
 
+    // Regression test for SEC-1309: an attacker who obtains a leaked callback
+    // URL (`?code=…&state=…`) must not be able to satisfy the double-submit
+    // check by replaying the URL `state` as the cookie value. The PKCE verifier
+    // lives only in the HttpOnly cookie, so the replayed state (which carries no
+    // verifier) must be rejected before any code exchange.
+    it('rejects a replayed URL state used as the PKCE cookie value (SEC-1309)', async () => {
+      const { getPKCECookieNameForState } = await import('./pkce.js');
+      const attackerCookie = `${getPKCECookieNameForState(sealedState)}=${sealedState}`;
+      request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), attackerCookie, {
+        code: 'test-code',
+        state: sealedState,
+      });
+
+      const response = (await loader({
+        request,
+        params: {},
+        context: {},
+      } as LoaderFunctionArgs)) as DataWithResponseInit<unknown>;
+
+      expect(isDataWithResponseInit(response)).toBeTruthy();
+      expect(response?.init?.status).toBe(500);
+      expect(authenticateWithCode).not.toHaveBeenCalled();
+    });
+
     it('clears the PKCE cookie on authentication failure', async () => {
       authenticateWithCode.mockRejectedValue(new Error('Auth failed'));
       const response = (await loader({

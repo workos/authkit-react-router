@@ -149,18 +149,31 @@ export interface GetAuthURLResult {
 }
 
 /**
- * Sealed state stored in the PKCE cookie and round-tripped through WorkOS as
- * the OAuth `state` parameter. `codeVerifier` is the PKCE secret that binds
- * the authorization code to this browser session.
+ * Sealed value round-tripped through WorkOS as the OAuth `state` URL
+ * parameter. It carries no secret: the PKCE `codeVerifier` deliberately lives
+ * only in the HttpOnly cookie (see `PKCECookieSchema`), never in the URL, so a
+ * leaked callback URL cannot complete the code exchange on its own. `nonce`
+ * binds the state to the verifier cookie set on the initiating browser.
  */
 export const StateSchema = v.object({
   nonce: v.string(),
   customState: v.optional(v.string()),
   returnPathname: v.optional(v.string()),
-  codeVerifier: v.string(),
 });
 
 export type State = v.InferOutput<typeof StateSchema>;
+
+/**
+ * Sealed payload stored only in the HttpOnly PKCE cookie. Holds the PKCE
+ * `codeVerifier` — the secret that binds the authorization code to the browser
+ * that started the flow — plus the `nonce` that ties it back to the URL state.
+ */
+export const PKCECookieSchema = v.object({
+  nonce: v.string(),
+  codeVerifier: v.string(),
+});
+
+export type PKCECookiePayload = v.InferOutput<typeof PKCECookieSchema>;
 
 export type AuthKitLoaderOptions = {
   ensureSignedIn?: boolean;

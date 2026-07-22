@@ -1,7 +1,7 @@
 import { LoaderFunctionArgs, data, redirect } from 'react-router';
 import { getConfig } from './config.js';
 import { HandleAuthOptions } from './interfaces.js';
-import { getPKCECookieString, getStateFromPKCECookieValue, readPKCECookie } from './pkce.js';
+import { getPKCECookieString, getStateFromUrlValue, getVerifierFromPKCECookieValue, readPKCECookie } from './pkce.js';
 import { sanitizeReturnPathname } from './return-pathname.js';
 import { encryptSession } from './session.js';
 import { configureSessionStorage } from './sessionStorage.js';
@@ -37,25 +37,30 @@ export function authLoader(options: HandleAuthOptions = {}) {
 
       const pkceCookieValue = readPKCECookie(request.headers.get('Cookie'), state);
 
-      // CSRF verification (double-submit cookie): both the cookie and the URL
-      // state must be present and identical. A missing cookie means either
-      // the browser never started this flow (forged link) or the cookie has
-      // been cleared (expired / tampered).
+      // The PKCE verifier lives only in this HttpOnly cookie, never in the URL
+      // state. A missing cookie means either the browser never started this
+      // flow (forged / leaked link) or the cookie was cleared (expired /
+      // tampered) — in every case we cannot recover the verifier.
       if (!pkceCookieValue) {
         throw new Error(
           'Auth cookie missing — cannot verify OAuth state. Ensure Set-Cookie headers are propagated on the redirect that started this flow.',
         );
       }
 
-      if (state !== pkceCookieValue) {
+      // Recover the verifier from the cookie and the flow metadata from the
+      // URL state. Both are sealed under the app's cookie password; replaying
+      // the URL `state` as the cookie fails here because it unseals to the
+      // state payload (no `codeVerifier`).
+      const { nonce: cookieNonce, codeVerifier } = await getVerifierFromPKCECookieValue(pkceCookieValue);
+      const { nonce: stateNonce, customState, returnPathname: returnPathnameState } = await getStateFromUrlValue(state);
+
+      // Binding check: the secret verifier cookie must carry the same nonce as
+      // the URL state. Because the verifier is only ever presentable by the
+      // browser that initiated the flow, possession of the callback URL alone
+      // can never satisfy this.
+      if (cookieNonce !== stateNonce) {
         throw new Error('OAuth state mismatch');
       }
-
-      const {
-        codeVerifier,
-        customState,
-        returnPathname: returnPathnameState,
-      } = await getStateFromPKCECookieValue(pkceCookieValue);
 
       const { accessToken, refreshToken, user, impersonator, oauthTokens, authenticationMethod, organizationId } =
         await getWorkOS().userManagement.authenticateWithCode({

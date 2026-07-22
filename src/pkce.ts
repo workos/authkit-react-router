@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { unsealData } from 'iron-session';
 import * as v from 'valibot';
 import { getConfig } from './config.js';
-import { State, StateSchema } from './interfaces.js';
+import { PKCECookiePayload, PKCECookieSchema, State, StateSchema } from './interfaces.js';
 
 export const PKCE_COOKIE_NAME = 'wos-auth-verifier';
 
@@ -96,11 +96,11 @@ function resolveSecure({
  */
 export function getPKCECookieString(
   sealedState: string,
-  options: { expired?: boolean; request?: Request; secure?: boolean; redirectUri?: string } = {},
+  options: { value?: string; expired?: boolean; request?: Request; secure?: boolean; redirectUri?: string } = {},
 ): string {
-  const { expired = false, request, secure, redirectUri } = options;
+  const { value: cookieValue = '', expired = false, request, secure, redirectUri } = options;
   const name = getPKCECookieNameForState(sealedState);
-  const value = expired ? '' : sealedState;
+  const value = expired ? '' : cookieValue;
 
   const parts = [
     `${name}=${value}`,
@@ -172,19 +172,34 @@ export function getPKCECleanupCookieStrings(
 }
 
 /**
- * Read and unseal the PKCE cookie, returning the code verifier, nonce, and
- * any caller-supplied custom state and return pathname.
+ * Unseal the OAuth `state` URL parameter into its (non-secret) payload: the
+ * flow `nonce`, plus any caller-supplied custom state and return pathname.
  *
- * Throws if the cookie was tampered with, encrypted under a different
- * password, or is missing required fields. Runtime validation via valibot
- * is an acceptable tradeoff here — this is not a hot path, and
- * sealing/unsealing does not prove the unsealed payload has the expected
- * shape.
+ * Throws if the state was tampered with or encrypted under a different
+ * password. Runtime validation via valibot is an acceptable tradeoff here —
+ * this is not a hot path, and sealing/unsealing does not prove the unsealed
+ * payload has the expected shape.
  */
-export async function getStateFromPKCECookieValue(cookieValue: string): Promise<State> {
-  const unsealed = await unsealData(cookieValue, {
+export async function getStateFromUrlValue(sealedState: string): Promise<State> {
+  const unsealed = await unsealData(sealedState, {
     password: getConfig('cookiePassword'),
   });
 
   return v.parse(StateSchema, unsealed);
+}
+
+/**
+ * Unseal the HttpOnly PKCE cookie into the code verifier and its bound nonce.
+ *
+ * Throws if the cookie was tampered with, encrypted under a different
+ * password, or is missing required fields — which is exactly what happens when
+ * a caller replays a leaked `state` value as the cookie: it unseals to the
+ * state payload (no `codeVerifier`) and fails schema validation here.
+ */
+export async function getVerifierFromPKCECookieValue(cookieValue: string): Promise<PKCECookiePayload> {
+  const unsealed = await unsealData(cookieValue, {
+    password: getConfig('cookiePassword'),
+  });
+
+  return v.parse(PKCECookieSchema, unsealed);
 }
