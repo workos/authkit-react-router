@@ -1,7 +1,7 @@
 # AuthKit React Router Library
 
 > [!IMPORTANT]
-> This is an early-stage port of [authkit-remix](https://github.com/workos/authkit-remix) to support React Router. The features focus on framework mode (e.g. Remix), with more planned support for library mode and more features.
+> This SDK focuses on React Router framework mode, with more support for library mode and additional features planned.
 
 The AuthKit library for React Router 7+ provides convenient helpers for authentication and session management using WorkOS & AuthKit with React Router. You can find this library in action in the [react-router-authkit-example](https://github.com/workos/react-router-authkit-example) repo.
 
