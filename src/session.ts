@@ -78,10 +78,14 @@ function isNetworkError(error: unknown): boolean {
  * error) is treated as terminal.
  */
 export function isTransientRefreshError(error: unknown): boolean {
+  // A known HTTP status is authoritative: a retryable code is transient, and
+  // any other status (e.g. a terminal 400 `invalid_grant`) is terminal. Return
+  // eagerly so a terminal response is never reclassified as transient by the
+  // network-cause fallback below.
   if (typeof error === 'object' && error !== null && 'status' in error) {
     const { status } = error;
-    if (typeof status === 'number' && RETRYABLE_REFRESH_STATUS_CODES.has(status)) {
-      return true;
+    if (typeof status === 'number') {
+      return RETRYABLE_REFRESH_STATUS_CODES.has(status);
     }
   }
 

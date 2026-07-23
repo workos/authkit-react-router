@@ -867,6 +867,31 @@ describe('session', () => {
         }
       });
 
+      it('should destroy the session for a terminal status even if its cause chain looks network-like', async () => {
+        // A terminal HTTP status must win over the network-cause fallback: a
+        // 400 that happens to wrap a "fetch failed" TypeError is still terminal.
+        authenticateWithRefreshToken.mockRejectedValue(
+          Object.assign(new Error('invalid_grant', { cause: new TypeError('fetch failed') }), {
+            status: 400,
+            error: 'invalid_grant',
+          }),
+        );
+        getAuthorizationUrlMock.mockResolvedValue({
+          url: 'https://auth.workos.com/oauth/authorize?state=abc123',
+          headers: { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+        });
+
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+          fail('Expected redirect response to be thrown');
+        } catch (response: unknown) {
+          assertIsResponse(response);
+          expect(response.status).toBe(302);
+          expect(destroySession).toHaveBeenCalled();
+          expect(response.headers.getSetCookie()).toContain('destroyed-session-cookie');
+        }
+      });
+
       it('should destroy the session for a terminal refresh failure (invalid_grant)', async () => {
         authenticateWithRefreshToken.mockRejectedValue(
           Object.assign(new Error('invalid_grant'), { status: 400, error: 'invalid_grant' }),
