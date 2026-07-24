@@ -35,6 +35,13 @@ export interface RefreshErrorOptions {
   error: unknown;
   request: Request;
   sessionData: SessionData;
+  /**
+   * Whether the refresh failed for a transient reason (network error, timeout,
+   * 429, or 5xx) rather than a terminal one (the refresh token is dead). When
+   * `true`, the sealed session is preserved (not destroyed) so a later request
+   * can refresh successfully once the condition clears.
+   */
+  isTransient: boolean;
 }
 
 export interface RefreshSuccessOptions {
