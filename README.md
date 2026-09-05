@@ -94,7 +94,7 @@ When retrieving configuration values, AuthKit follows this priority order:
 | `cookieMaxAge`   | `WORKOS_COOKIE_MAX_AGE`  | `34560000` (400 days) | No       | Maximum age of cookie in seconds              |
 | `apiHostname`    | `WORKOS_API_HOSTNAME`    | `api.workos.com`      | No       | WorkOS API hostname                           |
 | `apiPort`        | `WORKOS_API_PORT`        | -                     | No       | Port to use for API calls                     |
-| `issuer`         | `WORKOS_ISSUER`          | API origin            | No       | Expected `iss` claim of access tokens         |
+| `issuer`         | `WORKOS_ISSUER`          | API origin            | No       | Expected `iss` claim of access tokens (comma-separated for multiple) |
 
 > [!NOTE]
 >

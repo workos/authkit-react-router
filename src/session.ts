@@ -781,7 +781,7 @@ function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
 // WorkOS access tokens do not carry a standard `aud` claim — the target
 // client is encoded as `client_id` instead — so we do not pass `audience`
 // to jwtVerify here; doing so would reject every token.
-function getExpectedIssuer(): string {
+function getExpectedIssuer(): string | string[] {
   const issuer = getConfig('issuer');
   if (issuer) {
     return issuer;
