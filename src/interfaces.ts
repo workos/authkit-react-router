@@ -259,6 +259,13 @@ export interface AuthKitConfig {
   apiPort?: number;
 
   /**
+   * The expected `iss` claim of WorkOS access tokens
+   * Equivalent to the WORKOS_ISSUER environment variable
+   * Defaults to `https://${apiHostname}`
+   */
+  issuer?: string;
+
+  /**
    * The maximum age of the session cookie in seconds
    * Equivalent to the WORKOS_COOKIE_MAX_AGE environment variable
    */

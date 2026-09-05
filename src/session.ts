@@ -771,22 +771,24 @@ function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
   }
   return cachedJWKS;
 }
-// WorkOS access tokens carry a fixed `iss` claim regardless of environment
-// or client id; see
+// The `iss` claim on WorkOS access tokens is the API host that minted the
+// token (e.g. `https://api.workos.com`), or a custom issuer when the
+// environment has one configured; see
 // https://workos.com/docs/reference/user-management/session-tokens/access-token.
 // Validating it defends against tokens signed by a different WorkOS project
-// whose JWKS happens to resolve to the same keys, and matches the team's
-// "always validate iss" JWT rule.
+// whose JWKS happens to resolve to the same keys.
 //
 // WorkOS access tokens do not carry a standard `aud` claim — the target
 // client is encoded as `client_id` instead — so we do not pass `audience`
 // to jwtVerify here; doing so would reject every token.
-const WORKOS_JWT_ISSUER = 'https://api.workos.com';
+function getExpectedIssuer(): string {
+  return getConfig('issuer') ?? `https://${getConfig('apiHostname')}`;
+}
 
 async function verifyAccessToken(accessToken: string) {
   const JWKS = getJWKS();
   try {
-    await jwtVerify(accessToken, JWKS, { issuer: WORKOS_JWT_ISSUER });
+    await jwtVerify(accessToken, JWKS, { issuer: getExpectedIssuer() });
     return true;
   } catch (e) {
     return false;
