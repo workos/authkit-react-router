@@ -83,18 +83,18 @@ When retrieving configuration values, AuthKit follows this priority order:
 >
 > To print out the entire config, a `getFullConfig` function is provided for debugging purposes.
 
-| Option           | Environment Variable     | Default                 | Required | Description                                   |
-| ---------------- | ------------------------ | ----------------------- | -------- | --------------------------------------------- |
-| `clientId`       | `WORKOS_CLIENT_ID`       | -                       | Yes      | Your WorkOS Client ID                         |
-| `apiKey`         | `WORKOS_API_KEY`         | -                       | Yes      | Your WorkOS API Key                           |
-| `redirectUri`    | `WORKOS_REDIRECT_URI`    | -                       | Yes      | The callback URL configured in WorkOS         |
-| `cookiePassword` | `WORKOS_COOKIE_PASSWORD` | -                       | Yes      | Password for cookie encryption (min 32 chars) |
-| `cookieName`     | `WORKOS_COOKIE_NAME`     | `wos-session`           | No       | Name of the session cookie                    |
-| `apiHttps`       | `WORKOS_API_HTTPS`       | `true`                  | No       | Whether to use HTTPS for API calls            |
-| `cookieMaxAge`   | `WORKOS_COOKIE_MAX_AGE`  | `34560000` (400 days)   | No       | Maximum age of cookie in seconds              |
-| `apiHostname`    | `WORKOS_API_HOSTNAME`    | `api.workos.com`        | No       | WorkOS API hostname                           |
-| `apiPort`        | `WORKOS_API_PORT`        | -                       | No       | Port to use for API calls                     |
-| `issuer`         | `WORKOS_ISSUER`          | `https://{apiHostname}` | No       | Expected `iss` claim of access tokens         |
+| Option           | Environment Variable     | Default               | Required | Description                                   |
+| ---------------- | ------------------------ | --------------------- | -------- | --------------------------------------------- |
+| `clientId`       | `WORKOS_CLIENT_ID`       | -                     | Yes      | Your WorkOS Client ID                         |
+| `apiKey`         | `WORKOS_API_KEY`         | -                     | Yes      | Your WorkOS API Key                           |
+| `redirectUri`    | `WORKOS_REDIRECT_URI`    | -                     | Yes      | The callback URL configured in WorkOS         |
+| `cookiePassword` | `WORKOS_COOKIE_PASSWORD` | -                     | Yes      | Password for cookie encryption (min 32 chars) |
+| `cookieName`     | `WORKOS_COOKIE_NAME`     | `wos-session`         | No       | Name of the session cookie                    |
+| `apiHttps`       | `WORKOS_API_HTTPS`       | `true`                | No       | Whether to use HTTPS for API calls            |
+| `cookieMaxAge`   | `WORKOS_COOKIE_MAX_AGE`  | `34560000` (400 days) | No       | Maximum age of cookie in seconds              |
+| `apiHostname`    | `WORKOS_API_HOSTNAME`    | `api.workos.com`      | No       | WorkOS API hostname                           |
+| `apiPort`        | `WORKOS_API_PORT`        | -                     | No       | Port to use for API calls                     |
+| `issuer`         | `WORKOS_ISSUER`          | API origin            | No       | Expected `iss` claim of access tokens         |
 
 > [!NOTE]
 >

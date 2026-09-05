@@ -782,7 +782,14 @@ function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
 // client is encoded as `client_id` instead — so we do not pass `audience`
 // to jwtVerify here; doing so would reject every token.
 function getExpectedIssuer(): string {
-  return getConfig('issuer') ?? `https://${getConfig('apiHostname')}`;
+  const issuer = getConfig('issuer');
+  if (issuer) {
+    return issuer;
+  }
+
+  const protocol = getConfig('apiHttps') ? 'https' : 'http';
+  const port = getConfig('apiPort');
+  return `${protocol}://${getConfig('apiHostname')}${port ? `:${port}` : ''}`;
 }
 
 async function verifyAccessToken(accessToken: string) {

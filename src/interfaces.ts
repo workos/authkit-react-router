@@ -261,7 +261,7 @@ export interface AuthKitConfig {
   /**
    * The expected `iss` claim of WorkOS access tokens
    * Equivalent to the WORKOS_ISSUER environment variable
-   * Defaults to `https://${apiHostname}`
+   * Defaults to the configured API origin, e.g. `https://api.workos.com`
    */
   issuer?: string;
 

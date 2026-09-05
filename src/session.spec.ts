@@ -485,6 +485,40 @@ describe('session', () => {
         }
       });
 
+      it('derives an http issuer with a custom port from apiHttps and apiPort', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_HOSTNAME = 'localhost';
+        process.env.WORKOS_API_HTTPS = 'false';
+        process.env.WORKOS_API_PORT = '7000';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_HOSTNAME;
+          delete process.env.WORKOS_API_HTTPS;
+          delete process.env.WORKOS_API_PORT;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'http://localhost:7000' });
+        }
+      });
+
+      it('derives an https issuer with a custom port from apiPort', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_PORT = '8443';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_PORT;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'https://api.workos.com:8443' });
+        }
+      });
+
       it('prefers an explicitly configured issuer over apiHostname', async () => {
         jwtVerify.mockClear();
         process.env.WORKOS_API_HOSTNAME = 'api.workos-test.com';
