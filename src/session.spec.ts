@@ -460,13 +460,96 @@ describe('session', () => {
         jsonSpy.mockRestore();
       });
 
-      it('validates the access token issuer claim against https://api.workos.com', async () => {
+      it('validates the access token issuer claim against https://api.workos.com by default', async () => {
         await authkitLoader(createLoaderArgs(createMockRequest()));
 
         expect(jwtVerify).toHaveBeenCalled();
         for (const call of jwtVerify.mock.calls) {
           expect(call[0]).toBe('valid.jwt.token');
           expect(call[2]).toEqual({ issuer: 'https://api.workos.com' });
+        }
+      });
+
+      it('derives the expected issuer from apiHostname', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_HOSTNAME = 'api.workos-test.com';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_HOSTNAME;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'https://api.workos-test.com' });
+        }
+      });
+
+      it('derives an http issuer with a custom port from apiHttps and apiPort', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_HOSTNAME = 'localhost';
+        process.env.WORKOS_API_HTTPS = 'false';
+        process.env.WORKOS_API_PORT = '7000';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_HOSTNAME;
+          delete process.env.WORKOS_API_HTTPS;
+          delete process.env.WORKOS_API_PORT;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'http://localhost:7000' });
+        }
+      });
+
+      it('derives an https issuer with a custom port from apiPort', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_PORT = '8443';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_PORT;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'https://api.workos.com:8443' });
+        }
+      });
+
+      it('prefers an explicitly configured issuer over apiHostname', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_HOSTNAME = 'api.workos-test.com';
+        process.env.WORKOS_ISSUER = 'https://auth.example.com';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_HOSTNAME;
+          delete process.env.WORKOS_ISSUER;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'https://auth.example.com' });
+        }
+      });
+
+      it('accepts a comma-separated list of issuers', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_ISSUER = 'https://auth.example.com,https://api.workos.com/user_management/client_123';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_ISSUER;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({
+            issuer: ['https://auth.example.com', 'https://api.workos.com/user_management/client_123'],
+          });
         }
       });
 
