@@ -460,13 +460,96 @@ describe('session', () => {
         jsonSpy.mockRestore();
       });
 
-      it('validates the access token issuer claim against https://api.workos.com', async () => {
+      it('validates the access token issuer claim against https://api.workos.com by default', async () => {
         await authkitLoader(createLoaderArgs(createMockRequest()));
 
         expect(jwtVerify).toHaveBeenCalled();
         for (const call of jwtVerify.mock.calls) {
           expect(call[0]).toBe('valid.jwt.token');
           expect(call[2]).toEqual({ issuer: 'https://api.workos.com' });
+        }
+      });
+
+      it('derives the expected issuer from apiHostname', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_HOSTNAME = 'api.workos-test.com';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_HOSTNAME;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'https://api.workos-test.com' });
+        }
+      });
+
+      it('derives an http issuer with a custom port from apiHttps and apiPort', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_HOSTNAME = 'localhost';
+        process.env.WORKOS_API_HTTPS = 'false';
+        process.env.WORKOS_API_PORT = '7000';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_HOSTNAME;
+          delete process.env.WORKOS_API_HTTPS;
+          delete process.env.WORKOS_API_PORT;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'http://localhost:7000' });
+        }
+      });
+
+      it('derives an https issuer with a custom port from apiPort', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_PORT = '8443';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_PORT;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'https://api.workos.com:8443' });
+        }
+      });
+
+      it('prefers an explicitly configured issuer over apiHostname', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_API_HOSTNAME = 'api.workos-test.com';
+        process.env.WORKOS_ISSUER = 'https://auth.example.com';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_API_HOSTNAME;
+          delete process.env.WORKOS_ISSUER;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({ issuer: 'https://auth.example.com' });
+        }
+      });
+
+      it('accepts a comma-separated list of issuers', async () => {
+        jwtVerify.mockClear();
+        process.env.WORKOS_ISSUER = 'https://auth.example.com,https://api.workos.com/user_management/client_123';
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+        } finally {
+          delete process.env.WORKOS_ISSUER;
+        }
+
+        expect(jwtVerify).toHaveBeenCalled();
+        for (const call of jwtVerify.mock.calls) {
+          expect(call[2]).toEqual({
+            issuer: ['https://auth.example.com', 'https://api.workos.com/user_management/client_123'],
+          });
         }
       });
 
@@ -835,6 +918,83 @@ describe('session', () => {
         }
       });
 
+      it.each([
+        ['a rate limit (429)', Object.assign(new Error('Too many requests'), { status: 429 })],
+        ['a server error (503)', Object.assign(new Error('Service unavailable'), { status: 503 })],
+        ['a request timeout (408)', Object.assign(new Error('Request timeout'), { status: 408 })],
+        ['a network error', new TypeError('fetch failed')],
+        // The SDK re-wraps a raw network TypeError in a plain Error with the
+        // TypeError as its cause; the classifier must follow the cause chain.
+        [
+          'an SDK-wrapped network error',
+          new Error('Unexpected error: TypeError: fetch failed', { cause: new TypeError('fetch failed') }),
+        ],
+      ])('should preserve the session cookie when refresh fails transiently: %s', async (_label, transientError) => {
+        authenticateWithRefreshToken.mockRejectedValue(transientError);
+        getAuthorizationUrlMock.mockResolvedValue({
+          url: 'https://auth.workos.com/oauth/authorize?state=abc123',
+          headers: { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+        });
+
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+          fail('Expected redirect response to be thrown');
+        } catch (response: unknown) {
+          assertIsResponse(response);
+          expect(response.status).toBe(302);
+          // The sealed session must not be destroyed on a transient failure.
+          expect(destroySession).not.toHaveBeenCalled();
+          const setCookies = response.headers.getSetCookie();
+          expect(setCookies).not.toContain('destroyed-session-cookie');
+          expect(setCookies).toContain('wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600');
+        }
+      });
+
+      it('should destroy the session for a terminal status even if its cause chain looks network-like', async () => {
+        // A terminal HTTP status must win over the network-cause fallback: a
+        // 400 that happens to wrap a "fetch failed" TypeError is still terminal.
+        authenticateWithRefreshToken.mockRejectedValue(
+          Object.assign(new Error('invalid_grant', { cause: new TypeError('fetch failed') }), {
+            status: 400,
+            error: 'invalid_grant',
+          }),
+        );
+        getAuthorizationUrlMock.mockResolvedValue({
+          url: 'https://auth.workos.com/oauth/authorize?state=abc123',
+          headers: { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+        });
+
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+          fail('Expected redirect response to be thrown');
+        } catch (response: unknown) {
+          assertIsResponse(response);
+          expect(response.status).toBe(302);
+          expect(destroySession).toHaveBeenCalled();
+          expect(response.headers.getSetCookie()).toContain('destroyed-session-cookie');
+        }
+      });
+
+      it('should destroy the session for a terminal refresh failure (invalid_grant)', async () => {
+        authenticateWithRefreshToken.mockRejectedValue(
+          Object.assign(new Error('invalid_grant'), { status: 400, error: 'invalid_grant' }),
+        );
+        getAuthorizationUrlMock.mockResolvedValue({
+          url: 'https://auth.workos.com/oauth/authorize?state=abc123',
+          headers: { 'Set-Cookie': 'wos-auth-verifier-abc=sealed; Path=/; HttpOnly; SameSite=Lax; Max-Age=600' },
+        });
+
+        try {
+          await authkitLoader(createLoaderArgs(createMockRequest()));
+          fail('Expected redirect response to be thrown');
+        } catch (response: unknown) {
+          assertIsResponse(response);
+          expect(response.status).toBe(302);
+          expect(destroySession).toHaveBeenCalled();
+          expect(response.headers.getSetCookie()).toContain('destroyed-session-cookie');
+        }
+      });
+
       it('calls onSessionRefreshSuccess when provided', async () => {
         const onSessionRefreshSuccess = jest.fn();
         await authkitLoader(createLoaderArgs(createMockRequest()), {
@@ -853,6 +1013,30 @@ describe('session', () => {
         });
 
         expect(onSessionRefreshError).toHaveBeenCalled();
+      });
+
+      it('passes isTransient: true to onSessionRefreshError for a transient failure', async () => {
+        authenticateWithRefreshToken.mockRejectedValue(
+          Object.assign(new Error('Service unavailable'), { status: 503 }),
+        );
+        const onSessionRefreshError = jest.fn().mockReturnValue(redirect('/error'));
+
+        await authkitLoader(createLoaderArgs(createMockRequest()), {
+          onSessionRefreshError,
+        });
+
+        expect(onSessionRefreshError).toHaveBeenCalledWith(expect.objectContaining({ isTransient: true }));
+      });
+
+      it('passes isTransient: false to onSessionRefreshError for a terminal failure', async () => {
+        authenticateWithRefreshToken.mockRejectedValue(Object.assign(new Error('invalid_grant'), { status: 400 }));
+        const onSessionRefreshError = jest.fn().mockReturnValue(redirect('/error'));
+
+        await authkitLoader(createLoaderArgs(createMockRequest()), {
+          onSessionRefreshError,
+        });
+
+        expect(onSessionRefreshError).toHaveBeenCalledWith(expect.objectContaining({ isTransient: false }));
       });
 
       it('allows redirect from onSessionRefreshError callback', async () => {

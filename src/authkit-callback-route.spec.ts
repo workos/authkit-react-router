@@ -1,3 +1,6 @@
+import { sealData } from 'iron-session';
+import { getConfig } from './config.js';
+import { getPKCECookieNameForState, readPKCECookie } from './pkce.js';
 import { getWorkOS } from './workos.js';
 import { authLoader } from './authkit-callback-route.js';
 import {
@@ -114,10 +117,11 @@ describe('authLoader', () => {
       expect(findSetCookie(response?.init?.headers, 'wos-auth-verifier-')).toMatch(/Max-Age=0/);
     });
 
-    it('returns 500 when state does not match the PKCE cookie value', async () => {
-      // Valid cookie issued for a different flow
+    it('returns 500 when the URL state nonce does not match the PKCE cookie nonce', async () => {
+      // Use this flow's cookie name so validation reaches the nonce comparison.
       const other = await createSealedState({ nonce: 'other' });
-      request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), other.cookieHeader, {
+      const mismatchedCookie = `${getPKCECookieNameForState(sealedState)}=${readPKCECookie(other.cookieHeader, other.sealedState)}`;
+      request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), mismatchedCookie, {
         code: 'test-code',
         state: sealedState,
       });
@@ -130,6 +134,36 @@ describe('authLoader', () => {
       expect(isDataWithResponseInit(response)).toBeTruthy();
       expect(response?.init?.status).toBe(500);
       expect(authenticateWithCode).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenLastCalledWith({ error: 'OAuth state mismatch' });
+    });
+
+    it('rejects a leaked legacy URL state replayed as the verifier cookie before exchange (VULN-1309)', async () => {
+      // Old instances sealed the verifier into URL state. The attacker copies
+      // only that leaked sealed value into a cookie with the expected name.
+      const legacyState = await sealData(
+        { nonce: 'victim-nonce', codeVerifier: 'victim-verifier', returnPathname: '/account' },
+        { password: getConfig('cookiePassword'), ttl: 600 },
+      );
+      authenticateWithCode.mockImplementation(async ({ code, codeVerifier }) => {
+        if (code !== 'victim-code' || codeVerifier !== 'victim-verifier') throw new Error('PKCE mismatch');
+        return createAuthWithCodeResponse();
+      });
+      request = createRequestWithCookieAndParams(
+        new Request('http://example.com/callback'),
+        `${getPKCECookieNameForState(legacyState)}=${legacyState}`,
+        { code: 'victim-code', state: legacyState },
+      );
+
+      const response = (await loader({ request, params: {}, context: {} } as LoaderFunctionArgs)) as
+        | Response
+        | DataWithResponseInit<unknown>;
+
+      expect(authenticateWithCode).not.toHaveBeenCalled();
+      expect(isDataWithResponseInit(response)).toBeTruthy();
+      if (!isDataWithResponseInit(response)) throw new Error('Expected an authentication error');
+      expect(response.init?.status).toBe(500);
+      expect(findSetCookie(response.init?.headers, `${getConfig('cookieName')}=`)).toBeUndefined();
+      expect(findSetCookie(response.init?.headers, getPKCECookieNameForState(legacyState))).toMatch(/Max-Age=0/);
     });
 
     // Regression test for SEC-1309: an attacker who obtains a leaked callback
@@ -138,7 +172,6 @@ describe('authLoader', () => {
     // lives only in the HttpOnly cookie, so the replayed state (which carries no
     // verifier) must be rejected before any code exchange.
     it('rejects a replayed URL state used as the PKCE cookie value (SEC-1309)', async () => {
-      const { getPKCECookieNameForState } = await import('./pkce.js');
       const attackerCookie = `${getPKCECookieNameForState(sealedState)}=${sealedState}`;
       request = createRequestWithCookieAndParams(new Request('http://example.com/callback'), attackerCookie, {
         code: 'test-code',

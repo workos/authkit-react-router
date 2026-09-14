@@ -6,6 +6,9 @@ on:
       - 'main'
   pull_request: {}
 
+permissions:
+  contents: read
+
 defaults:
   run:
     shell: bash
@@ -17,10 +20,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version-file: .nvmrc
+      - name: Configure Socket Firewall
+        uses: workos/setup-socket-firewall@ca93dd8aa351f54f4729fe3377a9be23c631c25d  # v1
+        with:
+          token: ${{ secrets.PUBLIC_SOCKET_FIREWALL_TOKEN }}
+          allow-external-fork-fallback: true
       - name: Install Dependencies
         run: npm install
       - name: Prettier
@@ -32,10 +42,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version-file: .nvmrc
+      - name: Configure Socket Firewall
+        uses: workos/setup-socket-firewall@ca93dd8aa351f54f4729fe3377a9be23c631c25d  # v1
+        with:
+          token: ${{ secrets.PUBLIC_SOCKET_FIREWALL_TOKEN }}
+          allow-external-fork-fallback: true
       - name: Install Dependencies
         run: npm install
       - name: Lint
@@ -47,10 +64,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version-file: .nvmrc
+      - name: Configure Socket Firewall
+        uses: workos/setup-socket-firewall@ca93dd8aa351f54f4729fe3377a9be23c631c25d  # v1
+        with:
+          token: ${{ secrets.PUBLIC_SOCKET_FIREWALL_TOKEN }}
+          allow-external-fork-fallback: true
       - name: Install Dependencies
         run: npm install
       - name: Build
@@ -65,10 +89,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version: ${{ matrix.node }}
+      - name: Configure Socket Firewall
+        uses: workos/setup-socket-firewall@ca93dd8aa351f54f4729fe3377a9be23c631c25d  # v1
+        with:
+          token: ${{ secrets.PUBLIC_SOCKET_FIREWALL_TOKEN }}
+          allow-external-fork-fallback: true
       - name: Install Dependencies
         run: npm install
       - name: Test

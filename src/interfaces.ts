@@ -35,6 +35,13 @@ export interface RefreshErrorOptions {
   error: unknown;
   request: Request;
   sessionData: SessionData;
+  /**
+   * Whether the refresh failed for a transient reason (network error, timeout,
+   * 429, or 5xx) rather than a terminal one (the refresh token is dead). When
+   * `true`, the sealed session is preserved (not destroyed) so a later request
+   * can refresh successfully once the condition clears.
+   */
+  isTransient: boolean;
 }
 
 export interface RefreshSuccessOptions {
@@ -263,6 +270,13 @@ export interface AuthKitConfig {
    * Equivalent to the WORKOS_API_PORT environment variable
    */
   apiPort?: number;
+
+  /**
+   * The expected `iss` claim of WorkOS access tokens, or a list of accepted issuers
+   * Equivalent to the WORKOS_ISSUER environment variable (comma-separated for a list)
+   * Defaults to the configured API origin, e.g. `https://api.workos.com`
+   */
+  issuer?: string | string[];
 
   /**
    * The maximum age of the session cookie in seconds

@@ -94,6 +94,7 @@ When retrieving configuration values, AuthKit follows this priority order:
 | `cookieMaxAge`   | `WORKOS_COOKIE_MAX_AGE`  | `34560000` (400 days) | No       | Maximum age of cookie in seconds              |
 | `apiHostname`    | `WORKOS_API_HOSTNAME`    | `api.workos.com`      | No       | WorkOS API hostname                           |
 | `apiPort`        | `WORKOS_API_PORT`        | -                     | No       | Port to use for API calls                     |
+| `issuer`         | `WORKOS_ISSUER`          | API origin            | No       | Expected `iss` claim of access tokens (comma-separated for multiple) |
 
 > [!NOTE]
 >
@@ -296,21 +297,22 @@ export default function HomePage() {
 > no longer supported — see [Migrating from 0.4.x](#migrating-from-04x)
 > below.
 
-### Sign-in endpoint
+### Initiate login URI
 
-The sign-in route above doubles as your **Sign-in endpoint** (also known
-as `initiate_login_uri`) — the URL WorkOS redirects to when it needs to
+The sign-in route above doubles as your **Initiate login URI**
+(`initiate_login_uri`) — the URL WorkOS redirects to when it needs to
 start an authentication flow on your app's behalf (for example, when an
 admin impersonates a user from the dashboard, or when a password-reset
 email lands on a device that is not already signed in).
 
-In the [WorkOS dashboard](https://dashboard.workos.com), go to
-**Redirects** and set the **Sign-in endpoint** to the public URL of the
+In the [WorkOS dashboard](https://dashboard.workos.com), open
+**Applications**, select your application, go to the **Redirects** tab,
+and set the **Initiate login URI** to the public URL of the
 route (e.g., `http://localhost:5173/login` in development,
 `https://your-app.com/login` in production).
 
 > [!IMPORTANT]
-> A configured Sign-in endpoint is required for
+> A configured Initiate login URI is required for
 > [impersonation](https://workos.com/docs/user-management/impersonation)
 > to work. Without it, WorkOS-initiated flows (such as impersonating a
 > user from the dashboard) redirect directly to your callback URL
@@ -631,7 +633,7 @@ through your application's sign-in flow. Because this library enforces
 PKCE/CSRF verification on every callback, the request is rejected when
 the required `state` parameter is missing.
 
-**Fix:** Configure a [sign-in endpoint](#sign-in-endpoint) in your
+**Fix:** Configure an [Initiate login URI](#initiate-login-uri) in your
 WorkOS dashboard so that impersonation flows route through your app
 first, allowing the PKCE verifier and CSRF state to be set up before
 redirecting to WorkOS.

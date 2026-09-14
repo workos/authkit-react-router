@@ -185,6 +185,12 @@ export async function getStateFromUrlValue(sealedState: string): Promise<State> 
     password: getConfig('cookiePassword'),
   });
 
+  // Legacy URL state contains the verifier and can be replayed as a cookie.
+  // Reject it before the permissive schema strips unknown properties.
+  if (typeof unsealed === 'object' && unsealed !== null && 'codeVerifier' in unsealed) {
+    throw new Error('OAuth state must not contain a code verifier');
+  }
+
   return v.parse(StateSchema, unsealed);
 }
 
