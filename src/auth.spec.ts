@@ -135,6 +135,19 @@ describe('auth', () => {
       },
     };
 
+    // What the browser is allowed to see: mockAuthResponse minus session material.
+    const safeAuth = {
+      user: mockAuthResponse.user,
+      sessionId: mockAuthResponse.sessionId,
+      organizationId: mockAuthResponse.organizationId,
+      role: mockAuthResponse.role,
+      roles: mockAuthResponse.roles,
+      permissions: mockAuthResponse.permissions,
+      entitlements: mockAuthResponse.entitlements,
+      featureFlags: mockAuthResponse.featureFlags,
+      impersonator: mockAuthResponse.impersonator,
+    };
+
     beforeEach(() => {
       refreshSession.mockResolvedValue(mockAuthResponse);
     });
@@ -149,7 +162,7 @@ describe('auth', () => {
       const result = await switchToOrganization(request, organizationId);
 
       expect(data).toHaveBeenCalledWith(
-        { success: true, auth: mockAuthResponse },
+        { success: true, auth: safeAuth },
         {
           headers: {
             'Set-Cookie': 'new-cookie-value',
@@ -157,13 +170,49 @@ describe('auth', () => {
         },
       );
       expect(result).toEqual({
-        data: { success: true, auth: mockAuthResponse },
+        data: { success: true, auth: safeAuth },
         init: {
           headers: {
             'Set-Cookie': 'new-cookie-value',
           },
         },
       });
+    });
+
+    it('never ships accessToken, sealedSession, or Set-Cookie in the data payload (VULN-1244)', async () => {
+      const result = await switchToOrganization(request, organizationId);
+
+      const serialized = JSON.stringify(result.data);
+      expect(serialized).not.toContain('new-access-token');
+      expect(serialized).not.toContain('sealed-session-data');
+      expect(serialized).not.toContain('new-cookie-value');
+      expect(result.data.auth).not.toHaveProperty('accessToken');
+      expect(result.data.auth).not.toHaveProperty('sealedSession');
+      expect(result.data.auth).not.toHaveProperty('headers');
+      // The session still travels in the response header.
+      expect(result.init?.headers).toEqual({ 'Set-Cookie': 'new-cookie-value' });
+    });
+
+    it.each([
+      'https://evil.example.com/phish',
+      '//evil.example.com',
+      '/\\evil.example.com',
+      '/dashboard\r\nSet-Cookie: x=y',
+      'javascript:alert(1)',
+    ])('rejects off-origin returnTo %s and redirects to / (VULN-1264)', async (returnTo) => {
+      const result = await switchToOrganization(request, organizationId, { returnTo });
+
+      expect(redirect).toHaveBeenCalledWith('/', { headers: { 'Set-Cookie': 'new-cookie-value' } });
+      assertIsResponse(result);
+      expect(result.headers.get('Location')).toBe('/');
+    });
+
+    it('preserves a same-origin returnTo path with query and hash', async () => {
+      const returnTo = '/settings/orgs?tab=members#top';
+      const result = await switchToOrganization(request, organizationId, { returnTo });
+
+      assertIsResponse(result);
+      expect(result.headers.get('Location')).toBe(returnTo);
     });
 
     it('should redirect to returnTo when provided', async () => {
@@ -293,7 +342,7 @@ describe('auth', () => {
 
       await switchToOrganization(request, organizationId);
 
-      expect(data).toHaveBeenCalledWith({ success: true, auth: mockResponseWithoutCookie }, undefined);
+      expect(data).toHaveBeenCalledWith({ success: true, auth: safeAuth }, undefined);
     });
 
     it('omits the Set-Cookie response header on returnTo when refreshSession returns none', async () => {
