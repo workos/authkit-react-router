@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the package is pre-1.0, minor version bumps (e.g. `0.4.x → 0.10.0`) are
 used to signal breaking changes.
 
+## [0.12.5](https://github.com/workos/authkit-react-router/compare/v0.12.4...v0.12.5) (2026-09-15)
+
+
+### Bug Fixes
+
+* keep session material and open redirects out of switchToOrganization ([#94](https://github.com/workos/authkit-react-router/issues/94)) ([900ce8a](https://github.com/workos/authkit-react-router/commit/900ce8a7f965beeaf36bcb3fb510d910f409c806))
+
 ## [0.12.4](https://github.com/workos/authkit-react-router/compare/v0.12.3...v0.12.4) (2026-09-15)
 
 
