@@ -19,6 +19,20 @@ or
 yarn add @workos-inc/authkit-react-router
 ```
 
+### Upgrading the PKCE state format
+
+This security update separates the OAuth URL state from the verifier cookie.
+Sign-in attempts started with the previous shared state/cookie format must restart
+after the update. Accepting that format would retain the callback-replay
+vulnerability.
+
+Deploy all instances serving sign-in and callback requests together, for example
+with a coordinated cutover to the updated instances. Both old-format callbacks
+reaching updated instances and new-format callbacks reaching old instances fail.
+Users must restart interrupted sign-ins after the cutover.
+
+Existing authenticated sessions are unaffected by this PKCE format change.
+
 ## Configuration
 
 AuthKit for React Router offers a flexible configuration system that allows you to customize various settings. You can configure the library in three ways:
