@@ -3,6 +3,7 @@ import { getAuthorizationUrl } from './get-authorization-url.js';
 import { getClaimsFromAccessToken, getSessionFromCookie, refreshSession, terminateSession } from './session.js';
 import { GetAuthURLResult, NoUserInfo, UserInfo } from './interfaces.js';
 import { getConfig } from './config.js';
+import { sanitizeReturnPathname } from './return-pathname.js';
 
 /**
  * Build a sign-in URL and the short-lived PKCE / CSRF cookie that must travel
@@ -111,8 +112,9 @@ export async function withAuth(args: LoaderFunctionArgs): Promise<UserInfo | NoU
  * Switches the current session to a different organization.
  * @param request - The incoming request object.
  * @param organizationId - The ID of the organization to switch to.
- * @param options - Optional parameters.
- * @returns A redirect response to the specified returnTo URL or a data response with the updated auth data.
+ * @param options - Optional parameters. `returnTo` must be a same-origin
+ * pathname (e.g. `/dashboard`); anything else redirects to `/`.
+ * @returns A redirect response to the specified returnTo path or a data response with the updated auth data.
  */
 export async function switchToOrganization(
   request: Request,
@@ -120,18 +122,46 @@ export async function switchToOrganization(
   { returnTo }: { returnTo?: string } = {},
 ) {
   try {
-    const auth = await refreshSession(request, { organizationId });
+    const {
+      user,
+      sessionId,
+      organizationId: newOrganizationId,
+      role,
+      roles,
+      permissions,
+      entitlements,
+      featureFlags,
+      impersonator,
+      headers,
+    } = await refreshSession(request, { organizationId });
+
+    // Only display-safe claims go back to the browser. `accessToken`,
+    // `sealedSession`, and the raw `Set-Cookie` string stay server-side; the
+    // session travels via the response header alone (same invariant as
+    // authkitLoader post-CVE-2025-55008).
+    const auth = {
+      user,
+      sessionId,
+      organizationId: newOrganizationId,
+      role,
+      roles,
+      permissions,
+      entitlements,
+      featureFlags,
+      impersonator,
+    };
 
     // `refreshSession` always returns a `Set-Cookie` header for a successful
     // refresh; guard with `as Record<string, string>` to satisfy the wider
     // typing on AuthLoaderSuccessData without silently emitting an empty
     // `Set-Cookie` header if the invariant ever changes.
-    const setCookie = (auth.headers as Record<string, string> | undefined)?.['Set-Cookie'];
+    const setCookie = (headers as Record<string, string> | undefined)?.['Set-Cookie'];
     const responseHeaders = setCookie ? { 'Set-Cookie': setCookie } : undefined;
 
-    // if returnTo is provided, redirect to there
+    // if returnTo is provided, redirect there. Same-origin pathname only, so a
+    // request-controlled value can't turn this into an open redirect.
     if (returnTo) {
-      return redirect(returnTo, responseHeaders ? { headers: responseHeaders } : undefined);
+      return redirect(sanitizeReturnPathname(returnTo), responseHeaders ? { headers: responseHeaders } : undefined);
     }
 
     // otherwise return the updated auth data
