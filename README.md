@@ -43,10 +43,12 @@ The simplest way is to set environment variables in your `.env.local` file:
 
 ```bash
 WORKOS_CLIENT_ID="client_..." # retrieved from the WorkOS dashboard
-WORKOS_API_KEY="sk_test_..." # retrieved from the WorkOS dashboard
 WORKOS_REDIRECT_URI="http://localhost:5173/callback" # configured in the WorkOS dashboard
 WORKOS_COOKIE_PASSWORD="<your password>" # generate a secure password here
+WORKOS_API_KEY="sk_test_..." # optional: retrieved from the WorkOS dashboard; needed for feature flags and WorkOS management APIs
 ```
+
+Without `WORKOS_API_KEY`, AuthKit runs as a PKCE public client. See [Public client (keyless) mode](#public-client-keyless-mode).
 
 ### 2. Programmatic Configuration
 
@@ -57,10 +59,10 @@ import { configure } from '@workos-inc/authkit-react-router';
 // In your root or entry file
 configure({
   clientId: 'client_1234567890',
-  apiKey: 'sk_test_1234567890',
   redirectUri: 'http://localhost:5173/callback',
   cookiePassword: 'your-secure-cookie-password',
   // Optional settings
+  apiKey: 'sk_test_1234567890', // omit for public client (keyless) mode
   cookieName: 'my-custom-cookie-name',
   apiHttps: true,
   cookieMaxAge: 60 * 60 * 24 * 30, // 30 days
@@ -100,7 +102,7 @@ When retrieving configuration values, AuthKit follows this priority order:
 | Option           | Environment Variable     | Default               | Required | Description                                   |
 | ---------------- | ------------------------ | --------------------- | -------- | --------------------------------------------- |
 | `clientId`       | `WORKOS_CLIENT_ID`       | -                     | Yes      | Your WorkOS Client ID                         |
-| `apiKey`         | `WORKOS_API_KEY`         | -                     | Yes      | Your WorkOS API Key                           |
+| `apiKey`         | `WORKOS_API_KEY`         | -                     | No       | Your WorkOS API Key. Needed for feature flags and WorkOS management APIs; omit for [public client mode](#public-client-keyless-mode) |
 | `redirectUri`    | `WORKOS_REDIRECT_URI`    | -                     | Yes      | The callback URL configured in WorkOS         |
 | `cookiePassword` | `WORKOS_COOKIE_PASSWORD` | -                     | Yes      | Password for cookie encryption (min 32 chars) |
 | `cookieName`     | `WORKOS_COOKIE_NAME`     | `wos-session`         | No       | Name of the session cookie                    |
@@ -113,6 +115,35 @@ When retrieving configuration values, AuthKit follows this priority order:
 > [!NOTE]
 >
 > The `cookiePassword` must be at least 32 characters long for security reasons.
+
+### Public client (keyless) mode
+
+If your service only signs users in and shouldn't hold a WorkOS secret key, leave `WORKOS_API_KEY` unset. AuthKit then runs as an OAuth public client and needs only three variables:
+
+```bash
+WORKOS_CLIENT_ID="client_..."
+WORKOS_REDIRECT_URI="http://localhost:5173/callback"
+WORKOS_COOKIE_PASSWORD="<your password>"
+```
+
+Every sign-in already uses PKCE: the code verifier stays in an HttpOnly cookie on the browser that started the flow, so the authorization code can only be exchanged by that browser, without a client secret. Session refresh sends the refresh token with your client ID and no secret.
+
+What works without a key: sign-in and sign-up URLs, the callback (`authLoader`), `authkitLoader` and `withAuth` (including automatic refresh), `refreshSession`, `switchToOrganization`, `saveSession`, and `signOut`.
+
+What needs a key:
+
+- Feature flags. `getFeatureFlagsRuntimeClient()` throws `Feature flags require a WorkOS API key; ...` in keyless mode.
+- Direct WorkOS management calls through `getWorkOS()`, such as `organizations.*` or `userManagement.getUser`. The WorkOS SDK rejects them with an `ApiKeyRequiredException`.
+
+In TypeScript, `AuthKitConfig` is a union of `AuthKitConfidentialConfig` (with `apiKey`) and `AuthKitPublicConfig` (without). Because configuration is resolved from the environment at runtime, `getConfig('apiKey')` is typed `string | undefined`.
+
+> [!IMPORTANT]
+>
+> The WorkOS Node SDK falls back to `process.env.WORKOS_API_KEY` when no key is configured. If that variable is set in the server's environment, a key is in play, even if you use a custom value source with `configure()`. To run keyless, make sure `WORKOS_API_KEY` is absent from the process environment.
+
+> [!NOTE]
+>
+> To verify: whether your WorkOS environment must allow public clients for this client ID. If the code exchange fails in keyless mode with a client authentication error, check your client's settings in the WorkOS dashboard.
 
 ## Setup
 
@@ -171,6 +202,10 @@ export function App() {
 ```
 
 ### Evaluate feature flags
+
+> [!NOTE]
+>
+> Feature flags require a WorkOS API key (`WORKOS_API_KEY` or `configure({ apiKey })`). They aren't available in [public client mode](#public-client-keyless-mode).
 
 By default, `authkitLoader` reads `featureFlags` from the `feature_flags`
 claim in the WorkOS access token. This is convenient for small flag sets, but
@@ -487,7 +522,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
 ### Advanced: Direct access to the WorkOS client
 
-For advanced use cases or functionality not covered by the helper methods, you can access the underlying WorkOS client directly:
+For advanced use cases or functionality not covered by the helper methods, you can access the underlying WorkOS client directly. WorkOS management APIs need an API key; in [public client mode](#public-client-keyless-mode) they throw an `ApiKeyRequiredException`.
 
 ```ts
 import { getWorkOS } from '@workos-inc/authkit-react-router';

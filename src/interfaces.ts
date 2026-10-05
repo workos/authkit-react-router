@@ -225,20 +225,14 @@ export interface UnauthorizedData {
 }
 
 /**
- * AuthKit Configuration Options
+ * Configuration shared by both client modes.
  */
-export interface AuthKitConfig {
+interface AuthKitBaseConfig {
   /**
    * The WorkOS Client ID
    * Equivalent to the WORKOS_CLIENT_ID environment variable
    */
   clientId: string;
-
-  /**
-   * The WorkOS API Key
-   * Equivalent to the WORKOS_API_KEY environment variable
-   */
-  apiKey: string;
 
   /**
    * The redirect URI for the authentication callback
@@ -291,3 +285,40 @@ export interface AuthKitConfig {
    */
   cookieName: string;
 }
+
+/**
+ * Confidential client: the server holds a WorkOS API key.
+ *
+ * The key is sent as the client secret on code exchange and refresh (alongside
+ * PKCE), and unlocks features that call WorkOS management APIs: feature flags
+ * (`getFeatureFlagsRuntimeClient`) and direct `getWorkOS()` calls such as
+ * `organizations.*` or `userManagement.getUser`.
+ */
+export interface AuthKitConfidentialConfig extends AuthKitBaseConfig {
+  /**
+   * The WorkOS API Key
+   * Equivalent to the WORKOS_API_KEY environment variable
+   */
+  apiKey: string;
+}
+
+/**
+ * Public client (keyless): the server holds no WorkOS API key.
+ *
+ * Sign-in, callback, session refresh, organization switching and sign-out all
+ * work; PKCE protects the code exchange and the refresh token is bound to the
+ * client ID. Feature flags and WorkOS management APIs are unavailable.
+ */
+export interface AuthKitPublicConfig extends AuthKitBaseConfig {
+  apiKey?: never;
+}
+
+/**
+ * AuthKit Configuration Options
+ *
+ * Discriminated on the presence of `apiKey`: {@link AuthKitConfidentialConfig}
+ * when set, {@link AuthKitPublicConfig} when not. Configuration is resolved at
+ * runtime from environment variables and `configure()`, so `getConfig('apiKey')`
+ * is typed `string | undefined`.
+ */
+export type AuthKitConfig = AuthKitConfidentialConfig | AuthKitPublicConfig;

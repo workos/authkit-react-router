@@ -128,7 +128,76 @@ describe('config', () => {
   it('throws an error if required values are missing', () => {
     expect(() => {
       configure(() => undefined);
-      getConfig('apiKey');
-    }).toThrow();
+      getConfig('clientId');
+    }).toThrow('Missing required configuration value for clientId (WORKOS_CLIENT_ID).');
+  });
+
+  describe('public client (no API key)', () => {
+    const publicEnv = {
+      WORKOS_CLIENT_ID: 'client_public',
+      WORKOS_REDIRECT_URI: 'http://localhost:5173/callback',
+      WORKOS_COOKIE_PASSWORD: 'kR620keEzOIzPThfnMEAba8XYgKdQ5vg',
+    };
+    let savedApiKey: string | undefined;
+
+    beforeEach(() => {
+      savedApiKey = process.env.WORKOS_API_KEY;
+      delete process.env.WORKOS_API_KEY;
+    });
+
+    afterEach(() => {
+      if (savedApiKey !== undefined) process.env.WORKOS_API_KEY = savedApiKey;
+    });
+
+    it('resolves apiKey to undefined instead of throwing', () => {
+      configure(() => undefined);
+      expect(getConfig('apiKey')).toBeUndefined();
+    });
+
+    it('works with env-only configuration from process.env', () => {
+      // process.env from jest.setup minus WORKOS_API_KEY
+      expect(getConfig('apiKey')).toBeUndefined();
+      expect(getConfig('clientId')).toBe(process.env.WORKOS_CLIENT_ID);
+      expect(getConfig('redirectUri')).toBe(process.env.WORKOS_REDIRECT_URI);
+      expect(getConfig('cookiePassword')).toBe(process.env.WORKOS_COOKIE_PASSWORD);
+    });
+
+    it('works with an env-only value source', () => {
+      configure({}, publicEnv);
+      expect(getConfig('apiKey')).toBeUndefined();
+      expect(getConfig('clientId')).toBe('client_public');
+      expect(getConfig('redirectUri')).toBe('http://localhost:5173/callback');
+      expect(getConfig('cookiePassword')).toBe(publicEnv.WORKOS_COOKIE_PASSWORD);
+    });
+
+    it('accepts a programmatic config without apiKey', () => {
+      configure(
+        {
+          clientId: 'client_public',
+          redirectUri: 'http://localhost:5173/callback',
+          cookiePassword: publicEnv.WORKOS_COOKIE_PASSWORD,
+        },
+        () => undefined,
+      );
+      expect(getConfig('apiKey')).toBeUndefined();
+      expect(getConfig('clientId')).toBe('client_public');
+    });
+
+    it.each([
+      ['clientId', 'WORKOS_CLIENT_ID'],
+      ['redirectUri', 'WORKOS_REDIRECT_URI'],
+      ['cookiePassword', 'WORKOS_COOKIE_PASSWORD'],
+    ] as const)('still requires %s', (key, envKey) => {
+      const rest: Record<string, string> = { ...publicEnv };
+      delete rest[envKey];
+      configure({}, rest);
+      expect(() => getConfig(key)).toThrow(`Missing required configuration value for ${key} (${envKey}).`);
+    });
+
+    it('still validates the cookie password length', () => {
+      expect(() => configure({ clientId: 'client_public', cookiePassword: 'short' })).toThrow(
+        'cookiePassword must be at least 32 characters long',
+      );
+    });
   });
 });
