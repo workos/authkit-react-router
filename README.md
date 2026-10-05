@@ -128,7 +128,7 @@ WORKOS_COOKIE_PASSWORD="<your password>"
 
 Every sign-in already uses PKCE: the code verifier stays in an HttpOnly cookie on the browser that started the flow, so the authorization code can only be exchanged by that browser, without a client secret. Session refresh sends the refresh token with your client ID and no secret.
 
-What works without a key: sign-in and sign-up URLs, the callback (`authLoader`), `authkitLoader` and `withAuth` (including automatic refresh), `refreshSession`, `switchToOrganization`, `saveSession`, and `signOut`.
+What works without a key: sign-in and sign-up URLs, the callback (`authLoader`), `authkitLoader` (including automatic refresh), `withAuth` (without automatic refresh), `refreshSession`, `switchToOrganization`, `saveSession`, and `signOut`.
 
 What needs a key:
 

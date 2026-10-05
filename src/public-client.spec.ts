@@ -6,6 +6,11 @@
  * actually sends to `/user_management/authenticate`.
  */
 import type { LoaderFunctionArgs } from 'react-router';
+import type * as Jose from 'jose';
+
+// Keep jose real, but serve the JWKS locally so `authkitLoader` can verify
+// access tokens without a network call. Everything else hits the real code.
+jest.mock('jose', () => ({ ...jest.requireActual('jose'), createRemoteJWKSet: jest.fn() }));
 
 const API_KEY = 'sk_test_confidential';
 
@@ -19,7 +24,7 @@ const accessToken = `${base64url({ alg: 'none' })}.${base64url({
   exp: Math.floor(Date.now() / 1000) + 300,
 })}.sig`;
 
-function authenticateResponse(refreshToken: string) {
+function authenticateResponse(refreshToken: string, token = accessToken) {
   return new Response(
     JSON.stringify({
       user: {
@@ -37,7 +42,7 @@ function authenticateResponse(refreshToken: string) {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
       },
-      access_token: accessToken,
+      access_token: token,
       refresh_token: refreshToken,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -78,6 +83,16 @@ describe.each([
       delete process.env.WORKOS_API_KEY;
     }
   });
+
+  function expectClientCredentials(call: { body: Record<string, unknown>; authorization: string | null }) {
+    if (apiKey) {
+      expect(call.body.client_secret).toBe(apiKey);
+      expect(call.authorization).toBe(`Bearer ${apiKey}`);
+    } else {
+      expect(call.body).not.toHaveProperty('client_secret');
+      expect(call.authorization).toBeNull();
+    }
+  }
 
   function lastAuthenticateCall() {
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -123,13 +138,7 @@ describe.each([
       code: 'code_123',
       code_verifier: expect.any(String),
     });
-    if (apiKey) {
-      expect(exchange.body.client_secret).toBe(apiKey);
-      expect(exchange.authorization).toBe(`Bearer ${apiKey}`);
-    } else {
-      expect(exchange.body).not.toHaveProperty('client_secret');
-      expect(exchange.authorization).toBeNull();
-    }
+    expectClientCredentials(exchange);
 
     // 3. Refresh the session using the sealed session cookie.
     fetchMock.mockClear();
@@ -147,12 +156,68 @@ describe.each([
       client_id: process.env.WORKOS_CLIENT_ID,
       refresh_token: 'refresh_1',
     });
-    if (apiKey) {
-      expect(refresh.body.client_secret).toBe(apiKey);
-      expect(refresh.authorization).toBe(`Bearer ${apiKey}`);
-    } else {
-      expect(refresh.body).not.toHaveProperty('client_secret');
-      expect(refresh.authorization).toBeNull();
-    }
+    expectClientCredentials(refresh);
+  });
+  it('refreshes an expired session automatically in authkitLoader', async () => {
+    // Same (CJS, mocked) module instance that session.ts requires.
+    const jose = jest.requireMock<jest.Mocked<typeof Jose>>('jose');
+    const { publicKey, privateKey } = await jose.generateKeyPair('RS256');
+    const jwks = jose.createLocalJWKSet({
+      keys: [{ ...(await jose.exportJWK(publicKey)), kid: 'key_1', alg: 'RS256' }],
+    });
+    jose.createRemoteJWKSet.mockReturnValue(jwks as unknown as ReturnType<typeof Jose.createRemoteJWKSet>);
+    const now = Math.floor(Date.now() / 1000);
+    const sign = (exp: number) =>
+      new jose.SignJWT({ sid: 'session_123' })
+        .setProtectedHeader({ alg: 'RS256', kid: 'key_1' })
+        .setIssuer('https://api.workos.com')
+        .setIssuedAt(now - 600)
+        .setExpirationTime(exp)
+        .sign(privateKey);
+    const expiredToken = await sign(now - 60);
+    const freshToken = await sign(now + 300);
+
+    const { configureSessionStorage } = await import('./sessionStorage.js');
+    const { authkitLoader, saveSession } = await import('./session.js');
+    const { getConfig } = await import('./config.js');
+    await configureSessionStorage();
+
+    // A signed-in session whose access token has expired.
+    const { headers } = await saveSession(
+      {
+        accessToken: expiredToken,
+        refreshToken: 'refresh_1',
+        user: { id: 'user_123', email: 'test@example.com' } as never,
+        headers: {},
+      },
+      new Request('http://localhost:5173/'),
+    );
+
+    fetchMock.mockResolvedValueOnce(authenticateResponse('refresh_2', freshToken));
+    const result = await authkitLoader({
+      request: new Request('http://localhost:5173/account', { headers: { Cookie: cookiePair(headers['Set-Cookie']) } }),
+      params: {},
+      context: {},
+    } as LoaderFunctionArgs);
+
+    // The loader looked up the JWKS for this client and rejected the expired token...
+    expect(jose.createRemoteJWKSet).toHaveBeenCalledWith(
+      new URL(`https://api.workos.com/sso/jwks/${getConfig('clientId')}`),
+    );
+
+    // ...then refreshed with the expected client credentials...
+    const refresh = lastAuthenticateCall();
+    expect(refresh.body).toMatchObject({
+      grant_type: 'refresh_token',
+      client_id: process.env.WORKOS_CLIENT_ID,
+      refresh_token: 'refresh_1',
+    });
+    expectClientCredentials(refresh);
+
+    // ...and returned the user with a replacement session cookie.
+    expect(result.data).toMatchObject({ user: { id: 'user_123' }, sessionId: 'session_123' });
+    const setCookie = new Headers(result.init?.headers).get('Set-Cookie');
+    expect(setCookie).toMatch(/^wos-session=/);
+    expect(cookiePair(setCookie!)).not.toBe(cookiePair(headers['Set-Cookie']));
   });
 });
