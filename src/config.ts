@@ -34,7 +34,9 @@ export class Configuration {
 
   private valueSource: ValueSource = defaultSource;
 
-  private readonly requiredKeys: (keyof AuthKitConfig)[] = ['clientId', 'apiKey', 'redirectUri', 'cookiePassword'];
+  // `apiKey` is intentionally optional: without it AuthKit runs as a PKCE
+  // public client (sign-in only). See `AuthKitPublicConfig`.
+  private readonly requiredKeys: (keyof AuthKitConfig)[] = ['clientId', 'redirectUri', 'cookiePassword'];
 
   /**
    * Convert a camelCase string to an uppercase, underscore-separated environment variable name.
@@ -133,10 +135,19 @@ export function configure(source: ValueSource): void;
  * @param config The configuration values
  *
  * @example
+ * // Confidential client (API key enables feature flags and management APIs)
  * configure({
  *    clientId: 'your-client-id',
  *    redirectUri: 'https://your-app.com/auth/callback',
  *    apiKey: 'your-api-key',
+ *    cookiePassword: 'your-cookie-password',
+ *  });
+ *
+ * @example
+ * // Public client (keyless, sign-in only)
+ * configure({
+ *    clientId: 'your-client-id',
+ *    redirectUri: 'https://your-app.com/auth/callback',
  *    cookiePassword: 'your-cookie-password',
  *  });
  */

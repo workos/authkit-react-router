@@ -5,6 +5,8 @@ import { getFeatureFlagsRuntimeClient } from './feature-flags.js';
 import { authkitLoader, refreshSession, saveSession } from './session.js';
 import { getWorkOS } from './workos.js';
 
+export type { AuthKitConfig, AuthKitConfidentialConfig, AuthKitPublicConfig } from './interfaces.js';
+
 export {
   authLoader,
   authkitLoader,
