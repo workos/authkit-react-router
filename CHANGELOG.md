@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the package is pre-1.0, minor version bumps (e.g. `0.4.x → 0.10.0`) are
 used to signal breaking changes.
 
+## [0.13.0](https://github.com/workos/authkit-react-router/compare/v0.12.5...v0.13.0) (2026-10-06)
+
+
+### Features
+
+* support keyless PKCE public clients ([#96](https://github.com/workos/authkit-react-router/issues/96)) ([379a24f](https://github.com/workos/authkit-react-router/commit/379a24f9ad68e91eeb13f5882b91798aba6a93e5))
+
 ## [0.12.5](https://github.com/workos/authkit-react-router/compare/v0.12.4...v0.12.5) (2026-09-15)
 
 
