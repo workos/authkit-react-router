@@ -132,6 +132,13 @@ describe('config', () => {
     }).toThrow('Missing required configuration value for clientId (WORKOS_CLIENT_ID).');
   });
 
+  it('points to the installer, which needs no WorkOS account, when a required value is missing', () => {
+    expect(() => {
+      configure(() => undefined);
+      getConfig('clientId');
+    }).toThrow(/WORKOS_CLIENT_ID\)\. .*npx workos@latest install/);
+  });
+
   describe('public client (no API key)', () => {
     const publicEnv = {
       WORKOS_CLIENT_ID: 'client_public',
