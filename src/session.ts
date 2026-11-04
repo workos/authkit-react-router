@@ -803,7 +803,7 @@ function isUserAccessTokenPayload(payload: JWTPayload): boolean {
   );
 }
 
-async function verifyAccessToken(accessToken: string) {
+export async function verifyAccessToken(accessToken: string) {
   const JWKS = getJWKS();
   try {
     const { payload } = await jwtVerify(accessToken, JWKS, { issuer: getExpectedIssuer() });
