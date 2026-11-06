@@ -1,6 +1,12 @@
 import { LoaderFunctionArgs, data, redirect } from 'react-router';
 import { getAuthorizationUrl } from './get-authorization-url.js';
-import { getClaimsFromAccessToken, getSessionFromCookie, refreshSession, terminateSession } from './session.js';
+import {
+  getClaimsFromAccessToken,
+  getSessionFromCookie,
+  refreshSession,
+  terminateSession,
+  verifyAccessToken,
+} from './session.js';
 import { GetAuthURLResult, NoUserInfo, UserInfo } from './interfaces.js';
 import { getConfig } from './config.js';
 import { sanitizeReturnPathname } from './return-pathname.js';
@@ -89,6 +95,12 @@ export async function withAuth(args: LoaderFunctionArgs): Promise<UserInfo | NoU
     console.warn(
       '[AuthKit] Access token expired. Ensure authkitLoader is used in a parent/root route to handle automatic token refresh.',
     );
+    return {
+      user: null,
+    };
+  }
+
+  if (!(await verifyAccessToken(session.accessToken))) {
     return {
       user: null,
     };

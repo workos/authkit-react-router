@@ -410,8 +410,8 @@ describe('session', () => {
           },
         });
         jwtVerify.mockResolvedValue({
-          payload: {},
-          protectedHeader: {},
+          payload: { sid: 'test-session-id', auth_time: 1700000000 },
+          protectedHeader: { alg: 'RS256' },
           key: new TextEncoder().encode('test-key'),
         } as jose.JWTVerifyResult & jose.ResolvedKey<jose.KeyLike>);
         (jose.decodeJwt as jest.Mock).mockReturnValue({
@@ -551,6 +551,25 @@ describe('session', () => {
             issuer: ['https://auth.example.com', 'https://api.workos.com/user_management/client_123'],
           });
         }
+      });
+
+      it.each([
+        ['an agent sub_profile', { sub_profile: 'ai_agent' }],
+        ['a widget sub_type', { sub_type: 'authkit' }],
+        ['a missing auth_time', { auth_time: undefined }],
+        ['a string auth_time', { auth_time: '1700000000' }],
+        ['a missing sid', { sid: undefined }],
+        ['a numeric sid', { sid: 123 }],
+      ])('should not accept a verified access token with %s', async (_description, claims) => {
+        jwtVerify.mockResolvedValue({
+          payload: { sid: 'test-session-id', auth_time: 1700000000, ...claims },
+          protectedHeader: { alg: 'RS256' },
+          key: new TextEncoder().encode('test-key'),
+        } as jose.JWTVerifyResult & jose.ResolvedKey<jose.KeyLike>);
+        authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh failed'));
+
+        await expect(authkitLoader(createLoaderArgs(createMockRequest()))).rejects.toBeDefined();
+        expect(authenticateWithRefreshToken).toHaveBeenCalled();
       });
 
       it('should return authorized data with session claims', async () => {
@@ -1276,8 +1295,8 @@ describe('session', () => {
         // check in session.ts treats it as populated.
         createRemoteJWKSetMock.mockReturnValue(jest.fn());
         jwtVerifyMock.mockResolvedValue({
-          payload: {},
-          protectedHeader: {},
+          payload: { sid: 'test-session-id', auth_time: 1700000000 },
+          protectedHeader: { alg: 'RS256' },
           key: new TextEncoder().encode('test-key'),
         });
         decodeJwtMock.mockReturnValue({

@@ -10,6 +10,7 @@ const terminateSession = jest.mocked(session.terminateSession);
 const refreshSession = jest.mocked(session.refreshSession);
 const getSessionFromCookie = jest.mocked(session.getSessionFromCookie);
 const getClaimsFromAccessToken = jest.mocked(session.getClaimsFromAccessToken);
+const verifyAccessToken = jest.mocked(session.verifyAccessToken);
 const getConfig = jest.mocked(configModule.getConfig);
 
 jest.mock('./session', () => ({
@@ -17,6 +18,7 @@ jest.mock('./session', () => ({
   refreshSession: jest.fn(),
   getSessionFromCookie: jest.fn(),
   getClaimsFromAccessToken: jest.fn(),
+  verifyAccessToken: jest.fn(),
 }));
 
 jest.mock('./config', () => ({
@@ -371,6 +373,35 @@ describe('auth', () => {
     beforeEach(() => {
       jest.clearAllMocks();
       getConfig.mockReturnValue('wos-session');
+      verifyAccessToken.mockResolvedValue(true);
+    });
+
+    it('should return NoUserInfo when the access token fails verification', async () => {
+      getSessionFromCookie.mockResolvedValue({
+        accessToken: 'unverified-access-token',
+        refreshToken: 'refresh-token',
+        user: {
+          id: 'user-1',
+          email: 'test@example.com',
+          firstName: 'Test',
+          lastName: 'User',
+          emailVerified: true,
+          profilePictureUrl: null,
+          object: 'user' as const,
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          lastSignInAt: '2023-01-01T00:00:00Z',
+          externalId: null,
+        },
+        headers: {},
+      });
+      getClaimsFromAccessToken.mockReturnValue({ sessionId: 'session-123', exp: Date.now() / 1000 + 3600 });
+      verifyAccessToken.mockResolvedValue(false);
+
+      const result = await withAuth(createMockRequest('wos-session=valid-session-data'));
+
+      expect(verifyAccessToken).toHaveBeenCalledWith('unverified-access-token');
+      expect(result).toEqual({ user: null });
     });
 
     it('should return user info when a valid session exists', async () => {

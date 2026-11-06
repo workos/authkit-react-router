@@ -14,7 +14,7 @@ import type {
 import { getWorkOS } from './workos.js';
 
 import { sealData, unsealData } from 'iron-session';
-import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
+import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTPayload } from 'jose';
 import { getConfig } from './config.js';
 import { getPKCECleanupCookieStrings } from './pkce.js';
 import { configureSessionStorage, getSessionStorage } from './sessionStorage.js';
@@ -792,11 +792,22 @@ function getExpectedIssuer(): string | string[] {
   return `${protocol}://${getConfig('apiHostname')}${port ? `:${port}` : ''}`;
 }
 
-async function verifyAccessToken(accessToken: string) {
+// Other token types signed by the same environment key (agent and widget
+// tokens) must not authenticate a session cookie.
+function isUserAccessTokenPayload(payload: JWTPayload): boolean {
+  return (
+    typeof payload.sid === 'string' &&
+    typeof payload.auth_time === 'number' &&
+    (payload.sub_profile === undefined || payload.sub_profile === 'user') &&
+    payload.sub_type === undefined
+  );
+}
+
+export async function verifyAccessToken(accessToken: string) {
   const JWKS = getJWKS();
   try {
-    await jwtVerify(accessToken, JWKS, { issuer: getExpectedIssuer() });
-    return true;
+    const { payload } = await jwtVerify(accessToken, JWKS, { issuer: getExpectedIssuer() });
+    return isUserAccessTokenPayload(payload);
   } catch (e) {
     return false;
   }
