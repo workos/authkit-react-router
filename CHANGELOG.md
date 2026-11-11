@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the package is pre-1.0, minor version bumps (e.g. `0.4.x → 0.10.0`) are
 used to signal breaking changes.
 
+## [0.13.1](https://github.com/workos/authkit-react-router/compare/v0.13.0...v0.13.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* **session:** Reject non-user access tokens in session cookies ([#99](https://github.com/workos/authkit-react-router/issues/99)) ([a52eeb6](https://github.com/workos/authkit-react-router/commit/a52eeb66f448a23ba64f418e79214a6a9e34f3d5))
+
 ## [0.13.0](https://github.com/workos/authkit-react-router/compare/v0.12.5...v0.13.0) (2026-10-06)
 
 
