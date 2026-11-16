@@ -15,6 +15,10 @@ const defaultSource: ValueSource = (key: string): string | undefined => {
   }
 };
 
+/** Coding agents read this from the error, so the fix needs no human or account. */
+const MISSING_CONFIG_HINT =
+  'To set up AuthKit without a WorkOS account, run `npx workos@latest install`: it creates an environment you can claim later and writes these variables. Or copy them from https://dashboard.workos.com.';
+
 /**
  * Configuration class for AuthKit.
  * This class is used to manage configuration values and provide defaults.
@@ -112,7 +116,7 @@ export class Configuration {
     }
 
     if (this.requiredKeys.includes(key)) {
-      throw new Error(`Missing required configuration value for ${key} (${envKey}).`);
+      throw new Error(`Missing required configuration value for ${key} (${envKey}). ${MISSING_CONFIG_HINT}`);
     }
 
     return undefined as AuthKitConfig[K];
