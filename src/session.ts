@@ -414,8 +414,10 @@ export async function authkitLoader<Data = unknown>(
   });
 
   const { request } = loaderArgs;
-  // `url` exists from react-router 7.15; older v7 types don't declare it.
-  const { url } = loaderArgs as { url?: URL };
+  // React Router's normalized URL: `url` from 7.15, `unstable_url` in 7.13.2-7.14.
+  // Older v7 types declare neither.
+  const { url: stableUrl, unstable_url } = loaderArgs as { url?: URL; unstable_url?: URL };
+  const url = stableUrl ?? unstable_url;
 
   try {
     // Try to get session, this might throw SessionRefreshError
@@ -817,21 +819,13 @@ export async function verifyAccessToken(accessToken: string) {
 
 /**
  * The path to send the user back to after sign-in. React Router 8 (and v7 with
- * `future.v8_passThroughRequests`) passes the raw request to loaders, so a
- * client-side navigation arrives as `/foo.data?_routes=...`. Prefer the
- * normalized `url` loader arg; without it (React Router < 7.15, or callers that
- * pass only `{ request }`), strip the same details React Router strips.
+ * the pass-through requests flag) gives loaders the raw request, so a client-side
+ * navigation arrives as `/foo.data?_routes=...`; the `url` loader arg has those
+ * details removed. Without `url`, React Router already normalized `request.url`,
+ * so it is used as-is (a real route can end in `.data`).
  */
 function getReturnPathname(request: Request, url?: URL): string {
   const target = new URL(url ?? request.url);
-
-  if (!url) {
-    const { pathname } = target;
-    target.pathname = pathname.endsWith('/_.data')
-      ? pathname.slice(0, -'_.data'.length)
-      : pathname.replace(/\.data$/, '');
-    target.searchParams.delete('_routes');
-  }
 
   return `${target.pathname}${target.searchParams.size > 0 ? '?' + target.searchParams.toString() : ''}`;
 }

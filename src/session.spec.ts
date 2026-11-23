@@ -320,38 +320,51 @@ describe('session', () => {
   });
 
   describe('authkitLoader', () => {
-    const createLoaderArgs = (request: Request, url?: URL): LoaderFunctionArgs =>
+    const createLoaderArgs = (request: Request, urlArgs?: { url?: URL; unstable_url?: URL }): LoaderFunctionArgs =>
       ({
         request,
         params: {},
         context: {},
-        ...(url ? { url } : {}),
+        ...urlArgs,
       }) as LoaderFunctionArgs;
 
     // React Router 8 passes the raw request, so client-side navigations arrive
-    // as `.data` URLs. The return path must be the page, never the data URL.
-    const returnPathnameCases: [string, string, URL | undefined, string][] = [
+    // as `.data` URLs; the `url` arg has those details removed. Without `url`,
+    // React Router already normalized `request.url` and it is used as-is.
+    const page = (path: string) => new URL(`https://app.example.com${path}`);
+    const returnPathnameCases: [string, string, { url?: URL; unstable_url?: URL } | undefined, string][] = [
       [
-        'v8 with url arg',
+        'v8 data request',
         'https://app.example.com/protected.data?tab=2',
-        new URL('https://app.example.com/protected?tab=2'),
+        { url: page('/protected?tab=2') },
         '/protected?tab=2',
       ],
       [
-        'url arg wins over raw request',
+        'v8 data request with _routes',
+        'https://app.example.com/protected.data?tab=2&_routes=root,routes/protected',
+        { url: page('/protected?tab=2') },
+        '/protected?tab=2',
+      ],
+      [
+        'v8 trailing-slash data request',
+        'https://app.example.com/nested/_.data',
+        { url: page('/nested/') },
+        '/nested/',
+      ],
+      ['v8 root data request', 'https://app.example.com/_.data', { url: page('/') }, '/'],
+      [
+        'v7.13 unstable_url',
         'https://app.example.com/protected.data?_routes=root',
-        new URL('https://app.example.com/protected'),
+        { unstable_url: page('/protected') },
         '/protected',
       ],
+      ['v7 without url arg', 'https://app.example.com/protected?tab=2', undefined, '/protected?tab=2'],
       [
-        '.data + _routes without url arg',
-        'https://app.example.com/protected.data?tab=2&_routes=root,routes/protected',
+        'v7 route ending in .data',
+        'https://app.example.com/downloads/report.data',
         undefined,
-        '/protected?tab=2',
+        '/downloads/report.data',
       ],
-      ['trailing-slash data URL', 'https://app.example.com/nested/_.data', undefined, '/nested/'],
-      ['root data URL', 'https://app.example.com/_.data', undefined, '/'],
-      ['v7 normalized request', 'https://app.example.com/protected?tab=2', undefined, '/protected?tab=2'],
     ];
 
     describe('unauthenticated flows', () => {
@@ -397,9 +410,9 @@ describe('session', () => {
 
       it.each(returnPathnameCases)(
         'should use the page path as returnPathname when ensureSignedIn redirects (%s)',
-        async (_name, requestUrl, url, expected) => {
+        async (_name, requestUrl, urlArgs, expected) => {
           await expect(
-            authkitLoader(createLoaderArgs(createMockRequest('test-cookie', requestUrl), url), {
+            authkitLoader(createLoaderArgs(createMockRequest('test-cookie', requestUrl), urlArgs), {
               ensureSignedIn: true,
             }),
           ).rejects.toBeInstanceOf(Response);
@@ -979,11 +992,11 @@ describe('session', () => {
 
       it.each(returnPathnameCases)(
         'should use the page path as returnPathname when refresh fails (%s)',
-        async (_name, requestUrl, url, expected) => {
+        async (_name, requestUrl, urlArgs, expected) => {
           authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
 
           await expect(
-            authkitLoader(createLoaderArgs(createMockRequest('test-cookie', requestUrl), url)),
+            authkitLoader(createLoaderArgs(createMockRequest('test-cookie', requestUrl), urlArgs)),
           ).rejects.toBeInstanceOf(Response);
 
           expect(getAuthorizationUrlMock).toHaveBeenCalledWith(expect.objectContaining({ returnPathname: expected }));
