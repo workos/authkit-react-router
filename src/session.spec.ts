@@ -360,6 +360,12 @@ describe('session', () => {
       ],
       ['v7 without url arg', 'https://app.example.com/protected?tab=2', undefined, '/protected?tab=2'],
       [
+        'v7 document request with a trailing slash',
+        'https://app.example.com/protected/?tab=2',
+        { url: page('/protected?tab=2') },
+        '/protected/?tab=2',
+      ],
+      [
         'v7 route ending in .data',
         'https://app.example.com/downloads/report.data',
         undefined,

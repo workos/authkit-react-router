@@ -825,7 +825,9 @@ export async function verifyAccessToken(accessToken: string) {
  * so it is used as-is (a real route can end in `.data`).
  */
 function getReturnPathname(request: Request, url?: URL): string {
-  const target = new URL(url ?? request.url);
+  const requestUrl = new URL(request.url);
+  // Only a raw `.data` request needs `url`; on v7 `url` drops a document request's trailing slash.
+  const target = url && requestUrl.pathname.endsWith('.data') ? url : requestUrl;
 
   return `${target.pathname}${target.searchParams.size > 0 ? '?' + target.searchParams.toString() : ''}`;
 }
