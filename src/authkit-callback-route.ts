@@ -1,6 +1,6 @@
 import { LoaderFunctionArgs, data, redirect } from 'react-router';
 import { getConfig } from './config.js';
-import { HandleAuthOptions } from './interfaces.js';
+import { DataWithResponseInit, HandleAuthOptions } from './interfaces.js';
 import { getPKCECookieString, getStateFromUrlValue, getVerifierFromPKCECookieValue, readPKCECookie } from './pkce.js';
 import { sanitizeReturnPathname } from './return-pathname.js';
 import { encryptSession } from './session.js';
@@ -8,7 +8,11 @@ import { configureSessionStorage } from './sessionStorage.js';
 import { getWorkOS } from './workos.js';
 
 export function authLoader(options: HandleAuthOptions = {}) {
-  return async function loader({ request }: LoaderFunctionArgs) {
+  return async function loader({
+    request,
+  }: LoaderFunctionArgs): Promise<
+    Response | DataWithResponseInit<{ error: { message: string; description: string } }> | undefined
+  > {
     const { storage, cookie, returnPathname: returnPathnameOption = '/', onSuccess } = options;
     const cookieName = cookie?.name ?? getConfig('cookieName');
     const { getSession, commitSession } = await configureSessionStorage({ storage, cookieName });

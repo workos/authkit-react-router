@@ -292,9 +292,9 @@ type AuthorizedAuthLoader<Data> = (
  * @param options - Configuration options with enforced sign-in
  *
  * @example
- * export async function loader({ request }: LoaderFunctionArgs) {
+ * export async function loader(args: LoaderFunctionArgs) {
  *   return authkitLoader(
- *     { request },
+ *     args,
  *     { ensureSignedIn: true }
  *   );
  * }
@@ -315,8 +315,8 @@ export async function authkitLoader(
  * @param options - Optional configuration options
  *
  * @example
- * export async function loader({ request }: LoaderFunctionArgs) {
- *   return authkitLoader({ request });
+ * export async function loader(args: LoaderFunctionArgs) {
+ *   return authkitLoader(args);
  * }
  */
 export async function authkitLoader(
@@ -337,9 +337,9 @@ export async function authkitLoader(
  * @param options - Configuration options with enforced sign-in
  *
  * @example
- * export async function loader({ request }: LoaderFunctionArgs) {
+ * export async function loader(args: LoaderFunctionArgs) {
  *   return authkitLoader(
- *     { request },
+ *     args,
  *     async ({ auth }) => {
  *       // This will only be called for authenticated users
  *       const userData = await fetchUserData(auth.accessToken);
@@ -368,9 +368,9 @@ export async function authkitLoader<Data = unknown>(
  * @param options - Optional configuration options
  *
  * @example
- * export async function loader({ request }: LoaderFunctionArgs) {
+ * export async function loader(args: LoaderFunctionArgs) {
  *   return authkitLoader(
- *     { request },
+ *     args,
  *     async ({ auth }) => {
  *       if (auth.user) {
  *         // User is authenticated
@@ -414,6 +414,8 @@ export async function authkitLoader<Data = unknown>(
   });
 
   const { request } = loaderArgs;
+  // `url` exists from react-router 7.15; older v7 types don't declare it.
+  const { url } = loaderArgs as { url?: URL };
 
   try {
     // Try to get session, this might throw SessionRefreshError
@@ -422,11 +424,11 @@ export async function authkitLoader<Data = unknown>(
     if (!session) {
       // No session found case (not authenticated)
       if (ensureSignedIn) {
-        const returnPathname = getReturnPathname(request.url);
+        const returnPathname = getReturnPathname(request, url);
         const cookieSession = await getSession(request.headers.get('Cookie'));
 
-        const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
-        throw redirect(url, {
+        const { url: authUrl, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
+        throw redirect(authUrl, {
           headers: [
             ['Set-Cookie', await destroySession(cookieSession)],
             ['Set-Cookie', authHeaders['Set-Cookie']],
@@ -520,8 +522,8 @@ export async function authkitLoader<Data = unknown>(
         }
       }
 
-      const returnPathname = getReturnPathname(request.url);
-      const { url, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
+      const returnPathname = getReturnPathname(request, url);
+      const { url: authUrl, headers: authHeaders } = await getAuthorizationUrl({ returnPathname, request });
 
       // Only destroy the session for a terminal failure. A transient failure
       // (network error, timeout, 429, or 5xx that survived the SDK's internal
@@ -529,10 +531,10 @@ export async function authkitLoader<Data = unknown>(
       // let a later request refresh successfully rather than forcing the user
       // to re-authenticate.
       if (error.isTransient) {
-        throw redirect(url, { headers: [['Set-Cookie', authHeaders['Set-Cookie']]] });
+        throw redirect(authUrl, { headers: [['Set-Cookie', authHeaders['Set-Cookie']]] });
       }
 
-      throw redirect(url, {
+      throw redirect(authUrl, {
         headers: [
           ['Set-Cookie', await destroySession(cookieSession)],
           ['Set-Cookie', authHeaders['Set-Cookie']],
@@ -813,9 +815,23 @@ export async function verifyAccessToken(accessToken: string) {
   }
 }
 
-function getReturnPathname(url: string): string {
-  const newUrl = new URL(url);
+/**
+ * The path to send the user back to after sign-in. React Router 8 (and v7 with
+ * `future.v8_passThroughRequests`) passes the raw request to loaders, so a
+ * client-side navigation arrives as `/foo.data?_routes=...`. Prefer the
+ * normalized `url` loader arg; without it (React Router < 7.15, or callers that
+ * pass only `{ request }`), strip the same details React Router strips.
+ */
+function getReturnPathname(request: Request, url?: URL): string {
+  const target = new URL(url ?? request.url);
 
-  // istanbul ignore next
-  return `${newUrl.pathname}${newUrl.searchParams.size > 0 ? '?' + newUrl.searchParams.toString() : ''}`;
+  if (!url) {
+    const { pathname } = target;
+    target.pathname = pathname.endsWith('/_.data')
+      ? pathname.slice(0, -'_.data'.length)
+      : pathname.replace(/\.data$/, '');
+    target.searchParams.delete('_routes');
+  }
+
+  return `${target.pathname}${target.searchParams.size > 0 ? '?' + target.searchParams.toString() : ''}`;
 }

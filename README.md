@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > This is an early-stage port of [authkit-remix](https://github.com/workos/authkit-remix) to support React Router. The features focus on framework mode (e.g. Remix), with more planned support for library mode and more features.
 
-The AuthKit library for React Router 7+ provides convenient helpers for authentication and session management using WorkOS & AuthKit with React Router. You can find this library in action in the [react-router-authkit-example](https://github.com/workos/react-router-authkit-example) repo.
+The AuthKit library for React Router 7 and 8 provides convenient helpers for authentication and session management using WorkOS & AuthKit with React Router. You can find this library in action in the [react-router-authkit-example](https://github.com/workos/react-router-authkit-example) repo.
 
 ## Installation
 
@@ -18,6 +18,17 @@ or
 ```
 yarn add @workos-inc/authkit-react-router
 ```
+
+### Supported versions
+
+This library supports React Router `^7.2.0` and `^8.0.0`. React Router 8 itself
+requires Node.js 22.22+ and React 19.2.7+; React Router 7 apps can keep using
+Node.js 20 and React 18.
+
+Always pass the full loader `args` to `authkitLoader` (as in the examples below),
+not just `{ request }`. On React Router 8, client-side navigations reach your
+loaders as `.data` requests, and AuthKit reads React Router's `url` argument to
+send users back to the page they were on after sign-in.
 
 ### Upgrading the PKCE state format
 

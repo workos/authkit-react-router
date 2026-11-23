@@ -320,12 +320,39 @@ describe('session', () => {
   });
 
   describe('authkitLoader', () => {
-    const createLoaderArgs = (request: Request): LoaderFunctionArgs =>
+    const createLoaderArgs = (request: Request, url?: URL): LoaderFunctionArgs =>
       ({
         request,
         params: {},
         context: {},
+        ...(url ? { url } : {}),
       }) as LoaderFunctionArgs;
+
+    // React Router 8 passes the raw request, so client-side navigations arrive
+    // as `.data` URLs. The return path must be the page, never the data URL.
+    const returnPathnameCases: [string, string, URL | undefined, string][] = [
+      [
+        'v8 with url arg',
+        'https://app.example.com/protected.data?tab=2',
+        new URL('https://app.example.com/protected?tab=2'),
+        '/protected?tab=2',
+      ],
+      [
+        'url arg wins over raw request',
+        'https://app.example.com/protected.data?_routes=root',
+        new URL('https://app.example.com/protected'),
+        '/protected',
+      ],
+      [
+        '.data + _routes without url arg',
+        'https://app.example.com/protected.data?tab=2&_routes=root,routes/protected',
+        undefined,
+        '/protected?tab=2',
+      ],
+      ['trailing-slash data URL', 'https://app.example.com/nested/_.data', undefined, '/nested/'],
+      ['root data URL', 'https://app.example.com/_.data', undefined, '/'],
+      ['v7 normalized request', 'https://app.example.com/protected?tab=2', undefined, '/protected?tab=2'],
+    ];
 
     describe('unauthenticated flows', () => {
       beforeEach(() => {
@@ -367,6 +394,19 @@ describe('session', () => {
           expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-'))).toBe(true);
         }
       });
+
+      it.each(returnPathnameCases)(
+        'should use the page path as returnPathname when ensureSignedIn redirects (%s)',
+        async (_name, requestUrl, url, expected) => {
+          await expect(
+            authkitLoader(createLoaderArgs(createMockRequest('test-cookie', requestUrl), url), {
+              ensureSignedIn: true,
+            }),
+          ).rejects.toBeInstanceOf(Response);
+
+          expect(getAuthorizationUrlMock).toHaveBeenCalledWith(expect.objectContaining({ returnPathname: expected }));
+        },
+      );
 
       it('should pass through loader redirects when returned', async () => {
         const redirectResponse = redirect('/dashboard', {
@@ -936,6 +976,19 @@ describe('session', () => {
           );
         }
       });
+
+      it.each(returnPathnameCases)(
+        'should use the page path as returnPathname when refresh fails (%s)',
+        async (_name, requestUrl, url, expected) => {
+          authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
+
+          await expect(
+            authkitLoader(createLoaderArgs(createMockRequest('test-cookie', requestUrl), url)),
+          ).rejects.toBeInstanceOf(Response);
+
+          expect(getAuthorizationUrlMock).toHaveBeenCalledWith(expect.objectContaining({ returnPathname: expected }));
+        },
+      );
 
       it.each([
         ['a rate limit (429)', Object.assign(new Error('Too many requests'), { status: 429 })],

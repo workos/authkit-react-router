@@ -7,7 +7,7 @@ import {
   terminateSession,
   verifyAccessToken,
 } from './session.js';
-import { GetAuthURLResult, NoUserInfo, UserInfo } from './interfaces.js';
+import { DataWithResponseInit, GetAuthURLResult, NoUserInfo, UserInfo } from './interfaces.js';
 import { getConfig } from './config.js';
 import { sanitizeReturnPathname } from './return-pathname.js';
 
@@ -132,7 +132,14 @@ export async function switchToOrganization(
   request: Request,
   organizationId: string,
   { returnTo }: { returnTo?: string } = {},
-) {
+): Promise<
+  | Response
+  | DataWithResponseInit<{
+      success: boolean;
+      auth: Omit<Awaited<ReturnType<typeof refreshSession>>, 'accessToken' | 'sealedSession' | 'headers'>;
+    }>
+  | DataWithResponseInit<{ success: boolean; error: string }>
+> {
   try {
     const {
       user,
