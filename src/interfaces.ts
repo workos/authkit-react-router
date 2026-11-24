@@ -1,8 +1,11 @@
-import type { SessionStorage, SessionIdStorageStrategy, data, SessionData } from 'react-router';
+import type { SessionStorage, SessionIdStorageStrategy, SessionData, UNSAFE_DataWithResponseInit } from 'react-router';
 import type { AuthenticationResponse, FeatureFlagsRuntimeClient, OauthTokens, User } from '@workos-inc/node';
 import * as v from 'valibot';
 
-export type DataWithResponseInit<T> = ReturnType<typeof data<T>>;
+// The class `data()` returns. Referenced by name (not `ReturnType<typeof data<T>>`) so emitted
+// .d.ts files keep a top-level import instead of an inline `resolution-mode` import that TS < 5.3
+// can't parse.
+export type DataWithResponseInit<T> = UNSAFE_DataWithResponseInit<T>;
 
 export type UnwrapData<T> = T extends DataWithResponseInit<infer U> ? U : T;
 

@@ -1,4 +1,12 @@
-import { createCookieSessionStorage, type SessionIdStorageStrategy, type SessionStorage } from 'react-router';
+import {
+  createCookieSessionStorage,
+  type SessionData,
+  type SessionIdStorageStrategy,
+  type SessionStorage,
+} from 'react-router';
+
+// Explicit type args keep emitted .d.ts free of inline `resolution-mode` imports (TS < 5.3 can't parse them).
+type ConfiguredSessionStorage = SessionStorage<SessionData, SessionData> & { cookieName: string };
 import { getConfig } from './config.js';
 
 type SessionStorageConfig = { storage?: never; cookieName?: string } | { storage: SessionStorage; cookieName: string };
@@ -22,7 +30,7 @@ export class SessionStorageManager {
   private configPromise: Promise<void> | null = null;
   private cookieName: string = getConfig('cookieName') || 'wos-session';
 
-  async configure(config: SessionStorageConfig = {}) {
+  async configure(config: SessionStorageConfig = {}): Promise<ConfiguredSessionStorage> {
     if (!this.configPromise) {
       this.configPromise = new Promise<void>((resolve) => {
         this.storage = this.createSessionStorage(config);
@@ -38,7 +46,7 @@ export class SessionStorageManager {
    * If no configuration has been set, this will throw an error.
    * @returns The configured SessionStorage instance, and the cookie name.
    */
-  async getSessionStorage(): Promise<SessionStorage & { cookieName: string }> {
+  async getSessionStorage(): Promise<ConfiguredSessionStorage> {
     this.configPromise && (await this.configPromise);
     const { storage, cookieName } = this;
 
@@ -94,7 +102,7 @@ const sessionManager = new SessionStorageManager();
  * @param config - The configuration options for the SessionStorage instance.
  * @returns The configured SessionStorage instance.
  */
-export async function configureSessionStorage(config?: SessionStorageConfig) {
+export async function configureSessionStorage(config?: SessionStorageConfig): Promise<ConfiguredSessionStorage> {
   return await sessionManager.configure(config);
 }
 
@@ -103,6 +111,6 @@ export async function configureSessionStorage(config?: SessionStorageConfig) {
  * If no configuration has been set, this will throw an error.
  * @returns The configured SessionStorage instance, and the cookie name.
  */
-export async function getSessionStorage() {
+export async function getSessionStorage(): Promise<ConfiguredSessionStorage> {
   return await sessionManager.getSessionStorage();
 }

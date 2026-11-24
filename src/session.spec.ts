@@ -320,12 +320,58 @@ describe('session', () => {
   });
 
   describe('authkitLoader', () => {
-    const createLoaderArgs = (request: Request): LoaderFunctionArgs =>
+    const createLoaderArgs = (request: Request, urlArgs?: { url?: URL; unstable_url?: URL }): LoaderFunctionArgs =>
       ({
         request,
         params: {},
         context: {},
+        ...urlArgs,
       }) as LoaderFunctionArgs;
+
+    // React Router 8 passes the raw request, so client-side navigations arrive
+    // as `.data` URLs; the `url` arg has those details removed. Without `url`,
+    // React Router already normalized `request.url` and it is used as-is.
+    const page = (path: string) => new URL(`https://app.example.com${path}`);
+    const returnPathnameCases: [string, string, { url?: URL; unstable_url?: URL } | undefined, string][] = [
+      [
+        'v8 data request',
+        'https://app.example.com/protected.data?tab=2',
+        { url: page('/protected?tab=2') },
+        '/protected?tab=2',
+      ],
+      [
+        'v8 data request with _routes',
+        'https://app.example.com/protected.data?tab=2&_routes=root,routes/protected',
+        { url: page('/protected?tab=2') },
+        '/protected?tab=2',
+      ],
+      [
+        'v8 trailing-slash data request',
+        'https://app.example.com/nested/_.data',
+        { url: page('/nested/') },
+        '/nested/',
+      ],
+      ['v8 root data request', 'https://app.example.com/_.data', { url: page('/') }, '/'],
+      [
+        'v7.13 unstable_url',
+        'https://app.example.com/protected.data?_routes=root',
+        { unstable_url: page('/protected') },
+        '/protected',
+      ],
+      ['v7 without url arg', 'https://app.example.com/protected?tab=2', undefined, '/protected?tab=2'],
+      [
+        'v7 document request with a trailing slash',
+        'https://app.example.com/protected/?tab=2',
+        { url: page('/protected?tab=2') },
+        '/protected/?tab=2',
+      ],
+      [
+        'v7 route ending in .data',
+        'https://app.example.com/downloads/report.data',
+        undefined,
+        '/downloads/report.data',
+      ],
+    ];
 
     describe('unauthenticated flows', () => {
       beforeEach(() => {
@@ -367,6 +413,19 @@ describe('session', () => {
           expect(setCookies.some((c) => c.startsWith('wos-auth-verifier-'))).toBe(true);
         }
       });
+
+      it.each(returnPathnameCases)(
+        'should use the page path as returnPathname when ensureSignedIn redirects (%s)',
+        async (_name, requestUrl, urlArgs, expected) => {
+          await expect(
+            authkitLoader(createLoaderArgs(createMockRequest('test-cookie', requestUrl), urlArgs), {
+              ensureSignedIn: true,
+            }),
+          ).rejects.toBeInstanceOf(Response);
+
+          expect(getAuthorizationUrlMock).toHaveBeenCalledWith(expect.objectContaining({ returnPathname: expected }));
+        },
+      );
 
       it('should pass through loader redirects when returned', async () => {
         const redirectResponse = redirect('/dashboard', {
@@ -936,6 +995,19 @@ describe('session', () => {
           );
         }
       });
+
+      it.each(returnPathnameCases)(
+        'should use the page path as returnPathname when refresh fails (%s)',
+        async (_name, requestUrl, urlArgs, expected) => {
+          authenticateWithRefreshToken.mockRejectedValue(new Error('Refresh token invalid'));
+
+          await expect(
+            authkitLoader(createLoaderArgs(createMockRequest('test-cookie', requestUrl), urlArgs)),
+          ).rejects.toBeInstanceOf(Response);
+
+          expect(getAuthorizationUrlMock).toHaveBeenCalledWith(expect.objectContaining({ returnPathname: expected }));
+        },
+      );
 
       it.each([
         ['a rate limit (429)', Object.assign(new Error('Too many requests'), { status: 429 })],
