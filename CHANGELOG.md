@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the package is pre-1.0, minor version bumps (e.g. `0.4.x → 0.10.0`) are
 used to signal breaking changes.
 
+## [0.14.0](https://github.com/workos/authkit-react-router/compare/v0.13.0...v0.14.0) (2026-11-24)
+
+
+### Features
+
+* support React Router 8 ([#102](https://github.com/workos/authkit-react-router/issues/102)) ([33cc872](https://github.com/workos/authkit-react-router/commit/33cc872911cb4856c10d24da415b47d79b40c995))
+
+
+### Bug Fixes
+
+* point missing-config errors to npx workos@latest install ([#98](https://github.com/workos/authkit-react-router/issues/98)) ([d87b56f](https://github.com/workos/authkit-react-router/commit/d87b56fcbaa7da646e134b367f0d004f120962cd))
+* **session:** Reject non-user access tokens in session cookies ([#99](https://github.com/workos/authkit-react-router/issues/99)) ([a52eeb6](https://github.com/workos/authkit-react-router/commit/a52eeb66f448a23ba64f418e79214a6a9e34f3d5))
+
 ## [0.13.0](https://github.com/workos/authkit-react-router/compare/v0.12.5...v0.13.0) (2026-10-06)
 
 
